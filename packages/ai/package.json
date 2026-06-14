@@ -1,0 +1,17 @@
+{
+  "name": "@gr/ai",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./mock": "./src/mock.ts",
+    "./models": "./src/models.ts"
+  },
+  "scripts": { "typecheck": "tsc --noEmit -p tsconfig.json" },
+  "dependencies": {
+    "@gr/config": "workspace:*",
+    "@gr/core": "workspace:*",
+    "ai": "^6.0.0"
+  }
+}
