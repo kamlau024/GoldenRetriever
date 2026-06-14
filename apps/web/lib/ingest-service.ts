@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { drizzle } from "drizzle-orm/postgres-js";
-import type { AiClient } from "@gr/ai";
+import { createAiClient, type AiClient } from "@gr/ai";
 import type { IngestInput } from "@gr/core";
 import { schema } from "@gr/db";
 import { insertDocument } from "@gr/db/queries";
-import { runIngestion, type Converter } from "@gr/ingest";
+import { runIngestion, MarkitdownConverter, type Converter } from "@gr/ingest";
 
 type Db = ReturnType<typeof drizzle>;
 
@@ -38,4 +38,17 @@ export async function ingestAndProcess(db: Db, ai: AiClient, converter: Converte
     text: input.rawContent, sourceUrl: input.sourceUrl, filename: input.title,
   });
   return { documentId };
+}
+
+// --- Dependency-injection seam for the in-process ingest path ------------------
+// The HTTP route resolves its AI client + converter through this so tests can
+// substitute deterministic mocks without making live model calls.
+export interface IngestDeps { ai: AiClient; converter: Converter; }
+let depsOverride: IngestDeps | null = null;
+
+/** Test hook: override (or reset with null) the deps used by the in-process path. */
+export function __setIngestDeps(deps: IngestDeps | null) { depsOverride = deps; }
+
+export function resolveIngestDeps(): IngestDeps {
+  return depsOverride ?? { ai: createAiClient(), converter: new MarkitdownConverter() };
 }

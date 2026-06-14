@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { createDb, schema } from "@gr/db";
-import { createAiClient } from "@gr/ai";
-import { MarkitdownConverter } from "@gr/ingest";
 import { verifyApiToken } from "../../../lib/auth.js";
-import { enqueueIngestion, processJob } from "../../../lib/ingest-service.js";
+import { enqueueIngestion, processJob, resolveIngestDeps } from "../../../lib/ingest-service.js";
 import type { CaptureMode, DocumentKind } from "@gr/core";
 
 export async function POST(req: NextRequest) {
@@ -53,7 +51,8 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({ jobId, documentId }),
     });
   } else {
-    await processJob(db, createAiClient(), new MarkitdownConverter(), {
+    const { ai, converter } = resolveIngestDeps();
+    await processJob(db, ai, converter, {
       documentId, kbId: body.kbId, mimeType,
       text: body.html ?? body.text ?? "", sourceUrl: body.url ?? null, filename: body.title ?? null,
     });
