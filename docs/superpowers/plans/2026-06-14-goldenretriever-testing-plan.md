@@ -31,10 +31,12 @@ DATABASE_URL=postgres://gr:gr@localhost:5433/gr_test AI_GATEWAY_API_KEY=test pnp
 | `@gr/retrieval` HybridRetriever | ✅ integration | `hybrid.test.ts` |
 | API-token verification | ✅ integration | `apps/web/lib/auth.test.ts` |
 | ingest→process→retrieve | ✅ e2e (service layer) | `apps/web/test/ingest-e2e.test.ts` |
-| **`/api/ingest` route handler** | ❌ **GAP** | — |
-| **`/api/worker` route handler** | ❌ **GAP** | — |
-| **Security: IDOR 403 / auth 401 / fail-closed secret** | ❌ **GAP** | — |
-| **markitdown Python service (functional)** | ❌ **GAP** (syntax-only) | — |
+| `/api/ingest` route handler | ✅ unit + happy-path | `apps/web/test/ingest-route.test.ts`, `ingest-route-happy.test.ts` |
+| `/api/worker` route handler | ✅ unit | `apps/web/test/worker-route.test.ts` |
+| Security: IDOR 403 / auth 401 / fail-closed secret | ✅ negative tests | `ingest-route.test.ts`, `worker-route.test.ts` |
+| **markitdown Python service (functional)** | ❌ **GAP** (syntax-only) | — (CI-gated, Part A4) |
+
+> **Status (2026-06-14):** Part A1–A3 implemented (35 tests total). A4 (markitdown Python functional test) remains — it needs Python 3.10+ and the markitdown deps, so it runs in CI (Part D), not the local Node suite.
 
 ---
 
