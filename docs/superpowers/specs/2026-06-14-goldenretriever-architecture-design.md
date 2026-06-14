@@ -16,16 +16,17 @@
 - Client-agnostic, token-authenticated **ingest API** shared by all clients.
 - Async **ingestion pipeline**: parse → chunk → embed → lightweight LLM auto-tagging → store.
 - **Hybrid retrieval** (dense pgvector + sparse Postgres FTS) → rerank → **grounded RAG Q&A with citations**.
-- **Document updates**: manual refresh + automatic refresh (per-document polling and RSS/Atom/sitemap feed subscriptions).
 - Import flow (bookmarks / Pocket / Readwise export) — bulk URL ingestion through the same pipeline.
-- Web app: library view, search, chat, settings (API tokens, feeds).
+- Web app: library view, search, chat, settings (API tokens).
 - **Configurable model provider** (Claude / OpenAI / Gemini) via Vercel AI Gateway.
 
 ### Out of scope (deferred, but seams designed in)
 - **Stage 1** collaboration: shared bases, per-contributor attribution UI, @GoldenRetriever chatroom.
 - **Stage 2** auto-taxonomy knowledge graph (LazyGraphRAG) + research-report generation.
-- **Stage 3** spaced resurfacing, MCP endpoint, native mobile apps, video/podcast transcription.
+- **Stage 3** **document updates & automatic refresh (manual re-ingest, per-document polling, RSS/Atom/sitemap feed subscriptions)**, spaced resurfacing, MCP endpoint, native mobile apps, video/podcast transcription.
 - **Stage 4** Team/Enterprise: SSO/SAML/SCIM, SOC 2, RBAC, admin console, audit logs.
+
+> **Decision (2026-06-14):** Document refresh + RSS/feed auto-ingestion is **deferred to Stage 3** to keep the prototype lean. The `documents` table retains reserved `updated_at` / `update_count` columns as a forward seam (default null / 0; populated from Stage 3), but no refresh pipeline, polling, conditional-fetch fields, feed subscriptions, or cron scheduler are built now.
 
 ### Design principles
 - **Multi-tenant from day one** — every record is scoped to a `knowledge_base`; solo users simply have one personal KB. This is the seam that makes Stage 1 a drop-in, not a rewrite.
@@ -52,35 +53,53 @@
 | Rerank (default) | `cohere/rerank-3.5` | Table-stakes retrieval quality; swappable |
 | Object storage | Vercel Blob | Raw HTML snapshots + uploaded PDFs |
 | Async ingestion | **Vercel Queues** + DB job rows | Durable parse→chunk→embed off the request path |
-| Scheduling | Vercel Cron | Drives refresh + feed checks into the same queue |
 
 ---
 
 ## 3. System architecture
 
-```
-   Desktop ext ─┐  (full authenticated DOM)
-   Web upload  ─┤
-   iOS Share   ─┼──▶  POST /api/ingest ──▶ Vercel Queue ──▶ Worker fn
-   Android PWA ─┘     (Clerk session OR        │            parse·chunk·
-                       personal API token)     │            embed·tag
-                                               │               │
-   Web app users ──▶ search / chat ──▶ Retrieval/RAG           │
-                                         (hybrid→rerank→        │
-                                          grounded generate)    │
-                                               │                │
-        ┌──────────────────────┐   ┌───────────▼───┐   ┌────────▼───────┐
-        │ Clerk (auth, orgs)   │   │ AI Gateway     │   │ Vercel Blob    │
-        │ users / future orgs  │   │ embed·LLM·rerank│  │ raw HTML / PDFs │
-        └──────────────────────┘   └────────────────┘   └────────────────┘
-        ┌───────────────────────────────────────────────────────────────┐
-        │ Neon Postgres + pgvector                                       │
-        │ users · api_tokens · knowledge_bases · kb_members ·            │
-        │ documents · chunks(embedding+fts) · tags · document_tags ·     │
-        │ ingestion_jobs · feed_subscriptions · conversations · messages │
-        └───────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Clients
+        EXT["Desktop Extension<br/>(full authenticated DOM)"]
+        WEBUP["Web App Upload<br/>(PDF / text)"]
+        IOS["iOS Share Sheet<br/>(Shortcut)"]
+        APWA["Android PWA<br/>(share target)"]
+    end
 
-   Vercel Cron ──▶ /api/cron/refresh ──▶ enqueue refresh + feed-check jobs ──▶ Worker
+    subgraph Vercel["Vercel (Fluid Compute)"]
+        INGEST["POST /api/ingest<br/>Clerk session OR API token"]
+        QUEUE["Vercel Queue"]
+        WORKER["Worker fn<br/>parse · chunk · embed · tag"]
+        UI["Web App UI<br/>library · search · chat · settings"]
+        RAG["Retrieval / RAG<br/>hybrid → rerank → grounded generate"]
+    end
+
+    subgraph Services["Managed services"]
+        CLERK["Clerk<br/>auth / future orgs"]
+        GW["AI Gateway<br/>embed · LLM · rerank"]
+        BLOB["Vercel Blob<br/>raw HTML / PDFs"]
+    end
+
+    DB[("Neon Postgres + pgvector<br/>users · api_tokens · knowledge_bases ·<br/>kb_members · documents · chunks ·<br/>tags · document_tags · ingestion_jobs ·<br/>conversations · messages")]
+
+    EXT --> INGEST
+    WEBUP --> INGEST
+    IOS --> INGEST
+    APWA --> INGEST
+
+    INGEST -->|enqueue| QUEUE --> WORKER
+    INGEST -.->|verify| CLERK
+    INGEST --> DB
+    INGEST --> BLOB
+
+    WORKER --> GW
+    WORKER --> DB
+
+    UI --> RAG
+    UI -.->|session| CLERK
+    RAG --> GW
+    RAG --> DB
 ```
 
 ---
@@ -95,7 +114,6 @@ All clients call **one** client-agnostic, token-authenticated ingest endpoint. T
 | `selection` | Extension / mobile share of selected text | High | Ingests the exact text the user highlighted |
 | `url_fetch` | Mobile share of a bare URL | **Degraded** | Server-side fetch + parse; cannot see the user's authenticated session — expected limitation |
 | `upload` | Web app file upload (PDF) | Good | Parsed server-side |
-| `feed` | RSS/Atom/sitemap subscription | Varies | Auto-discovered new items, ingested via `url_fetch` |
 
 **Authentication:**
 - Web app + extension UI → **Clerk session**.
@@ -115,7 +133,6 @@ Flow:
 1. `POST /api/ingest` authenticates (Clerk session or API token), resolves the target KB, writes a `documents` row (`status='pending'`), stores the raw payload (HTML/PDF/text) to Blob, enqueues a job, returns immediately with the document id.
 2. Worker drains the queue:
    - **Parse**: HTML → main content via Mozilla Readability → markdown (turndown). PDF → text extraction. Selection/text → used directly.
-   - **Hash**: compute `content_hash` over normalized content (used to skip no-op re-embeds on refresh).
    - **Chunk**: recursive/semantic chunking (~500–1000 tokens, with overlap), preserving ordinal order.
    - **Embed**: embed each chunk via the configured embedding model; store `embedding` + `embedding_model`.
    - **Tag**: lightweight LLM auto-tagging/classification (NOT a graph) → `tags` / `document_tags`.
@@ -126,29 +143,24 @@ Failure handling: jobs are retryable with bounded `attempts` and `last_error`; a
 
 ---
 
-## 6. Document updates & automatic refresh
-
-Pulls a thin, cheap slice of the roadmap's Stage-3 "live brain" forward. Two patterns, both reusing the ingestion pipeline.
-
-### 6a. Refresh an existing document
-Trigger: manual **Refresh** button, or the Cron scheduler for `watch_enabled` documents.
-1. **Conditional fetch** using stored `http_etag` / `http_last_modified` (`If-None-Match` / `If-Modified-Since`). A `304 Not Modified` → bump `last_checked_at` only (zero cost).
-2. Otherwise fetch, parse, compute `content_hash`. If unchanged → bump `last_checked_at` only.
-3. If changed → re-chunk → re-embed → **atomically replace** that document's chunks (delete old, insert new in one transaction) → set `updated_at = now()`, `update_count += 1`, new `content_hash`, store new raw snapshot to Blob.
-
-Replacing chunks (rather than appending) is what makes the brain *living* rather than append-only, and keeps the vector store free of stale content.
-
-### 6b. Feed subscriptions (auto-discover new documents)
-`feed_subscriptions` rows (RSS/Atom/sitemap). The Cron scheduler checks active feeds; new entries since `last_seen_guid` become **new** `documents` (`capture_mode='feed'`, `status='pending'`) auto-clipped into the KB and pushed through the normal ingest pipeline; `last_seen_guid` / `last_checked_at` are updated.
-
-### Scheduling
-`vercel.ts` registers a Cron that hits `/api/cron/refresh`. The scheduler selects due documents/feeds and enqueues `refresh` / `feed-check` jobs onto the same queue. **Cost discipline:** conditional HTTP requests + the `content_hash` gate mean polling unchanged sources costs essentially nothing; embedding tokens are spent only on real changes.
-
----
-
-## 7. Retrieval / RAG pipeline
+## 6. Retrieval / RAG pipeline
 
 Behind a `Retriever` strategy interface so a graph retriever can be added at Stage 2 without disturbing the core loop:
+
+```mermaid
+flowchart LR
+    Q["question<br/>(scoped to kb_id)"] --> EMB["embed query<br/>(corpus model)"]
+    EMB --> DENSE["dense: pgvector<br/>cosine top-40"]
+    EMB --> SPARSE["sparse: Postgres FTS<br/>top-40"]
+    DENSE --> RRF["Reciprocal<br/>Rank Fusion"]
+    SPARSE --> RRF
+    RRF --> RERANK["rerank → top-8"]
+    RERANK --> GEN["grounded prompt<br/>→ stream generation"]
+    GEN --> CITE["inline citations<br/>→ map to documents"]
+    CITE --> PERSIST["persist conversation<br/>+ message + tokens"]
+```
+
+The interface:
 
 ```
 interface Retriever { retrieve(kbId, query): RankedChunk[] }
@@ -156,23 +168,13 @@ interface Retriever { retrieve(kbId, query): RankedChunk[] }
   └─ GraphRetriever    (LazyGraphRAG / on-demand, gated to paid)  ← Stage 2 seam
 ```
 
-Query flow (`HybridRetriever`):
-1. Embed the query with the **same** embedding model as the corpus.
-2. **Dense**: pgvector cosine top-40 within `kb_id`.
-3. **Sparse**: Postgres FTS (`websearch_to_tsquery`) top-40 within `kb_id`.
-4. **Fuse**: Reciprocal Rank Fusion → candidate set.
-5. **Rerank**: Gateway rerank model → top-8.
-6. **Generate**: grounded prompt with numbered sources → stream answer via AI SDK.
-7. **Cite**: inline citations map back to documents (title, url, `added_by`, `captured_at`).
-8. **Persist**: conversation + message + `citations` + `tokens`.
-
 Guardrails:
 - **Honest grounding**: if no chunk clears a relevance threshold, answer "I don't have anything saved about that" rather than hallucinate. This trust primitive underpins the credibility of the future shared graph.
 - **Token accounting**: per-message token tally is the metering seam for tier economics.
 
 ---
 
-## 8. AI / model configuration (provider-agnostic)
+## 7. AI / model configuration (provider-agnostic)
 
 All model calls route through **Vercel AI Gateway** using `provider/model` strings, configured by env vars in `packages/ai`:
 
@@ -187,7 +189,7 @@ All model calls route through **Vercel AI Gateway** using `provider/model` strin
 
 ---
 
-## 9. Data model
+## 8. Data model
 
 Postgres (Neon) + pgvector. Every content row is scoped to a `knowledge_base`.
 
@@ -197,75 +199,73 @@ api_tokens      id, user_id, name, token_hash, last_used_at, revoked_at, created
 knowledge_bases id, owner_id, name, kind('personal'|'shared'), created_at
 kb_members      kb_id, user_id, role('owner'|'editor'|'viewer')        -- Stage-1 seam (solo: owner only)
 documents       id, kb_id, added_by, source_url, title, kind('web'|'pdf'|'text'),
-                capture_mode('full_dom'|'selection'|'url_fetch'|'upload'|'feed'),
+                capture_mode('full_dom'|'selection'|'url_fetch'|'upload'),
                 status('pending'|'processing'|'ready'|'failed'),
                 blob_key, lang, word_count,
-                content_hash, http_etag, http_last_modified,
-                watch_enabled, last_checked_at,
-                captured_at, created_at, updated_at, update_count, metadata jsonb
+                captured_at, created_at,
+                updated_at, update_count,        -- reserved Stage-3 seam (null / 0 for now)
+                metadata jsonb
 chunks          id, document_id, kb_id, ordinal, content, token_count,
                 embedding vector(1536), embedding_model, fts tsvector
 tags            id, kb_id, name, slug
 document_tags   document_id, tag_id, confidence
-ingestion_jobs  id, document_id, type('ingest'|'refresh'|'feed-check'),
-                status, attempts, last_error, enqueued_at, finished_at
-feed_subscriptions id, kb_id, added_by, feed_url, kind('rss'|'atom'|'sitemap'),
-                title, active, last_checked_at, last_seen_guid, created_at
+ingestion_jobs  id, document_id, type('ingest'), status, attempts,
+                last_error, enqueued_at, finished_at
 conversations   id, kb_id, user_id, title, created_at
 messages        id, conversation_id, role('user'|'assistant'), content,
                 citations jsonb, tokens, created_at
 ```
 
 **Field notes**
-- `documents.updated_at` — null until the first post-initial re-ingestion; set on each successful update.
-- `documents.update_count` — increments on each successful re-ingestion.
+- `documents.updated_at` / `documents.update_count` — **reserved forward-seam columns**, populated starting Stage 3 (document refresh). Null / 0 in the prototype.
 - `documents.added_by` — populated now (= owner in solo) so Stage-1 attribution badges are free.
 - `kb_members` — present but trivial in solo; the seam for shared bases + roles.
+- `ingestion_jobs.type` — only `'ingest'` in Stage 0; `'refresh'` / `'feed-check'` types are added at Stage 3.
 
 **Indexes**
 - `chunks`: HNSW on `embedding` (`vector_cosine_ops`); GIN on `fts`.
-- `documents`: `(kb_id, status)`, `(kb_id, created_at)`, partial index on `watch_enabled`.
-- `feed_subscriptions`: `(active, last_checked_at)`.
+- `documents`: `(kb_id, status)`, `(kb_id, created_at)`.
 
 **Tenant isolation:** every query filters by `kb_id`, with access checked via `kb_members`. Postgres RLS is deferred to Stage 4 (hard isolation); app-layer scoping is enforced in the `db` package query helpers for the prototype.
 
 ---
 
-## 10. Infrastructure & services map (Vercel-centric)
+## 9. Infrastructure & services map (Vercel-centric)
 
 | Service | Provider | Provisioned via | Purpose |
 |---|---|---|---|
-| Hosting / compute | Vercel (Fluid Compute) | Vercel project | Next.js web app + API + worker + cron |
+| Hosting / compute | Vercel (Fluid Compute) | Vercel project | Next.js web app + API + worker |
 | Database + vectors | Neon Postgres + pgvector | Vercel Marketplace | All app data + embeddings + FTS |
 | Auth | Clerk | Vercel Marketplace | Users, sessions, future orgs |
 | AI models | Vercel AI Gateway | Vercel | Embeddings, generation, tagging, rerank |
 | Object storage | Vercel Blob | Vercel | Raw HTML snapshots, uploaded PDFs |
-| Queue | Vercel Queues | Vercel | Durable ingestion/refresh jobs |
-| Scheduler | Vercel Cron | `vercel.ts` | Refresh + feed checks |
+| Queue | Vercel Queues | Vercel | Durable ingestion jobs |
 | Browser extension dist | Chrome Web Store | manual | Distribution of the WXT extension |
 | Mobile capture | iOS Shortcut / Android PWA | user setup | Share-to-GoldenRetriever |
+
+> Vercel Cron is **not** used in Stage 0; it is introduced at Stage 3 to drive document refresh and feed checks.
 
 Environment configuration via `vercel env` + a shared zod schema in `packages/config`.
 
 ---
 
-## 11. Repo structure
+## 10. Repo structure
 
 ```
 goldenretriever/
 ├─ apps/
 │  ├─ web/                      Next.js App Router — UI + API
-│  │  └─ app/api/{ingest,search,chat,documents,feeds,tokens,worker,cron,webhooks}
+│  │  └─ app/api/{ingest,search,chat,documents,tokens,worker,webhooks}
 │  └─ extension/                WXT Chrome MV3 — clip + capture authed DOM
 ├─ packages/
 │  ├─ core/        domain types, KB/document/job logic
 │  ├─ db/          Drizzle schema, migrations, scoped query helpers
-│  ├─ ingest/      parse (Readability→markdown), chunk, content-hash
+│  ├─ ingest/      parse (Readability→markdown), chunk
 │  ├─ ai/          model config + embed/generate/rerank via Gateway
 │  ├─ retrieval/   Retriever interface + HybridRetriever (Graph seam)
 │  └─ config/      shared zod env schema, tsconfig, eslint presets
 ├─ docs/superpowers/specs/      design docs (this file)
-├─ vercel.ts                    crons, project config
+├─ vercel.ts                    project config
 ├─ turbo.json
 └─ package.json                 pnpm workspaces
 ```
@@ -274,20 +274,19 @@ Dependency direction is one-way: `core`/`db` → `ingest`/`ai`/`retrieval` → a
 
 ---
 
-## 12. Cost model (COGS awareness)
+## 11. Cost model (COGS awareness)
 
 | Item | Cost characteristic | Control |
 |---|---|---|
 | Storage (rows, vectors, Blob) | pennies | none needed at prototype scale |
-| Embeddings | ~$0.02 / 1M tokens | re-embed only on real content change |
+| Embeddings | ~$0.02 / 1M tokens | embed once on ingest |
 | Generation | the real COGS | per-message `tokens` tally → tier metering seam |
 | Rerank | small per query | isolated behind `ai` package |
-| Refresh polling | ~free | conditional HTTP + `content_hash` gate |
 | Knowledge graph | **deferred** | behind `Retriever` interface; LazyGraphRAG + paid-gated when added |
 
 ---
 
-## 13. Security, privacy & legal guardrails
+## 12. Security, privacy & legal guardrails
 
 - **User-initiated personal capture** model (not server-side mass scraping) — the lower-risk posture flagged in the Validation Plan (R2).
 - **Delete / takedown** is a first-class operation: deleting a document cascades to its chunks and removes its Blob snapshot. This is the mechanism for DMCA/takedown response.
@@ -297,38 +296,39 @@ Dependency direction is one-way: `core`/`db` → `ingest`/`ai`/`retrieval` → a
 
 ---
 
-## 14. Testing strategy
+## 13. Testing strategy
 
-- **Unit (TDD):** chunking, content-hash, RRF fusion, citation mapping, Readability extraction on fixture HTML, and the "no relevant context → honest refusal" guardrail. Pure and deterministic.
-- **Integration:** ingestion worker against a disposable Postgres+pgvector (Neon branch) — clip fixture → `ready` → chunks exist; retrieval returns the expected doc; refresh **replaces** chunks and bumps `update_count`.
+- **Unit (TDD):** chunking, RRF fusion, citation mapping, Readability extraction on fixture HTML, and the "no relevant context → honest refusal" guardrail. Pure and deterministic.
+- **Integration:** ingestion worker against a disposable Postgres+pgvector (Neon branch) — clip fixture → `ready` → chunks exist; retrieval returns the expected doc.
 - **Contract:** ingest-API auth (Clerk session vs. API token) and capture-mode handling.
 - **AI boundary:** model calls mocked at the `ai` package; a small **golden-question eval set** against a seeded corpus guards retrieval quality (run manually / lightweight CI).
 
 ---
 
-## 15. Forward seams (roadmap alignment)
+## 14. Forward seams (roadmap alignment)
 
 | Stage | What unlocks it | Already in the foundation |
 |---|---|---|
 | **1 — Collaboration** | invites + realtime chatroom + @GoldenRetriever bot | `kb_members`, `documents.added_by`, kb-scoped queries, Clerk Orgs |
 | **2 — Graph + reports** | `GraphRetriever` (LazyGraphRAG, gated) + report workflow | `Retriever` interface, kb-scoped chunks, Vercel Workflow available |
-| **3 — Live + MCP** | MCP server wrapping retrieval; native iOS share extension | refresh/feeds already built; `retrieval` is a clean package boundary; one ingest API |
+| **3 — Live + MCP** | document refresh + RSS/feed subscriptions (adds `content_hash`, conditional-fetch fields, `watch_enabled`, `feed_subscriptions`, Vercel Cron, `refresh`/`feed-check` job types, chunk-replacement); MCP server wrapping retrieval; native iOS share extension | reserved `updated_at`/`update_count` columns; `retrieval` is a clean package boundary; one ingest API |
 | **4 — Enterprise** | SSO/SCIM, RBAC, audit logs, hard isolation | Clerk Orgs, role on `kb_members`, RLS-ready schema |
 
 ---
 
-## 16. Risks carried from research
+## 15. Risks carried from research
 
 - **Ingestion fragility (permanent maintenance tax):** mitigated by client-side authenticated DOM capture; mobile URL-fetch is explicitly degraded; budget ongoing parser upkeep.
 - **Copyright/ToS exposure:** user-initiated personal capture + first-class delete/takedown + private snapshots.
-- **Cost-runaway (GraphRAG/generation):** graph deferred + gated; conditional refresh; token metering seam.
-- **Cold-start "blank brain":** import flow (bookmarks/Pocket/Readwise) + feed subscriptions seed the corpus quickly.
+- **Cost-runaway (GraphRAG/generation):** graph deferred + gated; token metering seam.
+- **Cold-start "blank brain":** import flow (bookmarks/Pocket/Readwise) seeds the corpus quickly. (Feed-driven seeding arrives with refresh/RSS at Stage 3.)
 
 ---
 
-## 17. Open decisions / deferred questions
+## 16. Open decisions / deferred questions
 
 - Embedding model is pinned at 1536 dims for the prototype; revisit if a higher-quality model with different dims is desired (requires re-embed migration).
 - Queue vs. DB-job-table: default to Vercel Queues; the worker interface allows falling back to a cron-drained `ingestion_jobs` table if the beta is problematic.
 - Reranker provider (Cohere default) to be confirmed once AI Gateway model availability is verified during setup.
 - PDF parsing: start with Node-based extraction; escalate to a Python (Fluid Compute) parser only if quality on the target-200 sites is insufficient.
+- Document refresh + RSS/feeds deferred to Stage 3 (decision 2026-06-14) to reduce prototype complexity.
