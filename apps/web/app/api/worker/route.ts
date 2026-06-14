@@ -1,14 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { createDb, schema } from "@gr/db";
 import { createAiClient } from "@gr/ai";
 import { MarkitdownConverter } from "@gr/ingest";
 import { processJob } from "../../../lib/ingest-service.js";
 
+function secretOk(provided: string, expected: string): boolean {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 export async function POST(req: NextRequest) {
-  if (req.headers.get("x-worker-secret") !== (process.env.WORKER_SECRET ?? "dev")) {
+  // Fail closed: a missing secret is a misconfiguration, not an open door.
+  const expected = process.env.WORKER_SECRET;
+  if (!expected) return NextResponse.json({ error: "misconfigured" }, { status: 500 });
+  if (!secretOk(req.headers.get("x-worker-secret") ?? "", expected)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
+
   const { documentId } = await req.json() as { jobId: string; documentId: string };
   const { db } = createDb();
 

@@ -1,3 +1,4 @@
+import hmac
 import json
 import os
 import tempfile
@@ -18,8 +19,11 @@ _EXT = {
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
-        secret = os.environ.get("MARKITDOWN_SECRET", "dev")
-        if self.headers.get("x-worker-secret") != secret:
+        # Fail closed: a missing secret is a misconfiguration, not an open door.
+        secret = os.environ.get("MARKITDOWN_SECRET")
+        if not secret:
+            return self._send(500, {"error": "misconfigured"})
+        if not hmac.compare_digest(self.headers.get("x-worker-secret", ""), secret):
             return self._send(403, {"error": "forbidden"})
 
         length = int(self.headers.get("content-length", 0))
