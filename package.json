@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "turbo run build",
-    "test": "vitest run",
+    "test": "bash scripts/test.sh",
+    "test:raw": "vitest run",
     "test:watch": "vitest",
     "typecheck": "turbo run typecheck",
     "db:up": "docker compose -f docker-compose.test.yml up -d",

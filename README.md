@@ -4,16 +4,24 @@ Clip → ingest → ask, for a single user's personal knowledge base. This is **
 
 ## Develop
 
-1. `pnpm install`
-2. `pnpm db:up` (Postgres 17 + pgvector on port 5433)
-3. Apply the schema:
-   ```bash
-   cat packages/db/drizzle/0000_*.sql | docker compose -f docker-compose.test.yml exec -T db psql -U gr -d gr_test
-   ```
-4. Run the tests:
-   ```bash
-   DATABASE_URL=postgres://gr:gr@localhost:5433/gr_test AI_GATEWAY_API_KEY=test pnpm test
-   ```
+```bash
+pnpm install
+pnpm test          # equivalent to ./scripts/test.sh
+```
+
+`pnpm test` runs [`scripts/test.sh`](scripts/test.sh): it starts the Postgres 17 +
+pgvector test database (Docker, port 5433), applies the schema on first run, and
+runs the full Vitest suite. Requires Docker running.
+
+Scope a run by passing args straight through to vitest:
+
+```bash
+pnpm test packages/retrieval      # one package
+pnpm test -t "IDOR"               # by test name
+```
+
+`pnpm test:raw` runs vitest only (no DB setup) — for CI where the database is
+provisioned separately. `pnpm db:down` tears down the test database.
 
 ## Packages
 
