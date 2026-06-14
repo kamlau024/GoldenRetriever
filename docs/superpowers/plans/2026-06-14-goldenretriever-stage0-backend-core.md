@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the tested backend that turns submitted page content into a searchable, citable personal knowledge base — ingest (parse → chunk → embed → tag → store) and hybrid grounded retrieval — exposed through one client-agnostic ingest API.
+**Goal:** Build the tested backend that turns submitted content (web pages, plus PDF/Office/image documents) into a searchable, citable personal knowledge base — ingest (detect format → parse/convert → chunk → embed → tag → store) and hybrid grounded retrieval — exposed through one client-agnostic ingest API.
 
-**Architecture:** A pnpm + Turborepo monorepo. Pure-logic packages (`config`, `core`, `ingest`, `retrieval` fusion, `ai` config) are unit-tested with no I/O. Stateful pieces (`db`, `ai` calls, `retrieval` queries, the ingest API + worker) are integration-tested against a real Postgres+pgvector container, with model calls mocked at the `ai` package boundary. Everything is scoped to a `knowledge_base` (multi-tenant from day one).
+**Architecture:** A pnpm + Turborepo monorepo. Pure-logic packages (`config`, `core`, `ingest`, `retrieval` fusion, `ai` config) are unit-tested with no I/O. Stateful pieces (`db`, `ai` calls, `retrieval` queries, the ingest API + worker) are integration-tested against a real Postgres+pgvector container, with model calls mocked at the `ai` package boundary and binary-document conversion mocked behind a `Converter` interface. Non-HTML documents are converted to markdown by a separate **markitdown** Python service (Vercel Fluid Compute), verified at deploy. Everything is scoped to a `knowledge_base` (multi-tenant from day one).
 
-**Tech Stack:** TypeScript, pnpm workspaces, Turborepo, Vitest, Next.js (App Router), Drizzle ORM + drizzle-kit, Postgres 17 + pgvector, Vercel AI SDK v6 + AI Gateway, `@mozilla/readability` + `jsdom` + `turndown`.
+**Tech Stack:** TypeScript, pnpm workspaces, Turborepo, Vitest, Next.js (App Router), Drizzle ORM + drizzle-kit, Postgres 17 + pgvector, Vercel AI SDK v6 + AI Gateway, `@mozilla/readability` + `jsdom` + `turndown`, and a Python `markitdown` Fluid Compute service for PDF/Office/image conversion.
 
 **Scope of this plan (Plan 1 of 3):** Backend core only. No browser extension, no rich web UI, no Clerk UI (API-token auth only for the ingest endpoint). Those are Plans 2 and 3. Document refresh/RSS is deferred to Stage 3 per the spec.
 
@@ -38,12 +38,15 @@ goldenretriever/
 │  │  ├─ src/client.ts
 │  │  ├─ src/queries.ts
 │  │  └─ src/queries.test.ts
-│  ├─ ingest/                         parse + chunk (pure)
+│  ├─ ingest/                         format router + parse + chunk
 │  │  ├─ package.json
-│  │  ├─ src/extract.ts
+│  │  ├─ src/extract.ts               HTML → markdown (Readability)
 │  │  ├─ src/extract.test.ts
 │  │  ├─ src/chunk.ts
-│  │  └─ src/chunk.test.ts
+│  │  ├─ src/chunk.test.ts
+│  │  ├─ src/converter.ts             Converter iface + MarkitdownConverter (HTTP) + Mock
+│  │  ├─ src/router.ts                convertToMarkdown() format router
+│  │  └─ src/router.test.ts
 │  ├─ ai/                             model config + embed/generate/rerank
 │  │  ├─ package.json
 │  │  ├─ src/models.ts
@@ -56,15 +59,20 @@ goldenretriever/
 │     ├─ src/rrf.test.ts
 │     ├─ src/hybrid.ts
 │     └─ src/hybrid.test.ts
-└─ apps/
-   └─ web/                            Next.js (API only in Plan 1)
-      ├─ package.json
-      ├─ next.config.ts
-      ├─ app/api/ingest/route.ts
-      ├─ app/api/worker/route.ts
-      ├─ lib/auth.ts                  API-token verification
-      ├─ lib/auth.test.ts
-      └─ test/ingest-e2e.test.ts
+├─ apps/
+│  └─ web/                            Next.js (API only in Plan 1)
+│     ├─ package.json
+│     ├─ next.config.ts
+│     ├─ app/api/ingest/route.ts
+│     ├─ app/api/worker/route.ts
+│     ├─ lib/auth.ts                  API-token verification
+│     ├─ lib/auth.test.ts
+│     └─ test/ingest-e2e.test.ts
+└─ services/
+   └─ convert/                        markitdown Python function (Fluid Compute)
+      ├─ api/index.py                 HTTP handler: bytes + mime → markdown
+      ├─ requirements.txt
+      └─ vercel.json
 ```
 
 **Dependency direction (one-way):** `config`, `core` → `db`, `ingest`, `ai` → `retrieval` → `apps/web`. No package imports from `apps/`.
@@ -344,8 +352,15 @@ Create `packages/core/src/index.ts`:
 
 ```ts
 export type CaptureMode = "full_dom" | "selection" | "url_fetch" | "upload";
-export type DocumentKind = "web" | "pdf" | "text";
+export type DocumentKind = "web" | "pdf" | "document" | "image" | "text";
 export type DocumentStatus = "pending" | "processing" | "ready" | "failed";
+
+/** Result of converting any source format to markdown. */
+export interface ConvertedContent {
+  title: string | null;
+  markdown: string;
+  wordCount: number;
+}
 
 /** Input accepted by the ingest API, normalized for the pipeline. */
 export interface IngestInput {
@@ -353,9 +368,11 @@ export interface IngestInput {
   addedBy: string;
   captureMode: CaptureMode;
   kind: DocumentKind;
+  /** Detected source MIME (e.g. text/html, text/plain, application/pdf); null when unknown. */
+  mimeType: string | null;
   sourceUrl: string | null;
   title: string | null;
-  /** Raw HTML (full_dom/url_fetch), plain text (selection/text), or unused (pdf upload). */
+  /** Raw HTML (full_dom/url_fetch), plain text (selection/text), or unused (binary upload). */
   rawContent: string;
 }
 
@@ -476,7 +493,8 @@ export const documents = pgTable("documents", {
   addedBy: text("added_by").notNull().references(() => users.id),
   sourceUrl: text("source_url"),
   title: text("title"),
-  kind: text("kind").notNull(),          // 'web' | 'pdf' | 'text'
+  kind: text("kind").notNull(),          // 'web' | 'pdf' | 'document' | 'image' | 'text'
+  mimeType: text("mime_type"),           // detected source MIME; drives converter routing
   captureMode: text("capture_mode").notNull(),
   status: text("status").notNull().default("pending"),
   blobKey: text("blob_key"),
@@ -714,11 +732,13 @@ export async function createKnowledgeBase(db: Db, kb: { ownerId: string; name: s
 export async function insertDocument(db: Db, d: {
   kbId: string; addedBy: string; kind: string; captureMode: string;
   sourceUrl: string | null; title: string | null;
+  mimeType?: string | null; metadata?: unknown;
 }) {
   const docId = id("doc");
   await db.insert(documents).values({
     id: docId, kbId: d.kbId, addedBy: d.addedBy, kind: d.kind,
-    captureMode: d.captureMode, sourceUrl: d.sourceUrl, title: d.title, status: "pending",
+    captureMode: d.captureMode, sourceUrl: d.sourceUrl, title: d.title,
+    mimeType: d.mimeType ?? null, metadata: (d.metadata ?? null) as never, status: "pending",
   });
   return docId;
 }
@@ -962,6 +982,261 @@ Expected: PASS (3 tests).
 ```bash
 git add packages/ingest
 git commit -m "feat(ingest): token-aware text chunker with overlap"
+```
+
+---
+
+## Task 7A: `packages/ingest` — Converter interface + format router
+
+**Files:**
+- Create: `packages/ingest/src/converter.ts`, `packages/ingest/src/router.ts`, `packages/ingest/src/router.test.ts`
+
+Adds multi-format support: HTML → Readability, plain text → passthrough, binary documents (PDF/Office/images) → a `Converter` (the markitdown service in Task 7B). The Node side is tested with a stub converter; the real HTTP call is verified at deploy.
+
+- [ ] **Step 1: Write the Converter interface and implementations**
+
+Create `packages/ingest/src/converter.ts`:
+
+```ts
+/** Converts binary document bytes to markdown (PDF, Office, images, …). */
+export interface Converter {
+  convert(bytes: Uint8Array, mimeType: string, filename?: string): Promise<string>;
+}
+
+/** Calls the markitdown Python service (Task 7B) over HTTP. */
+export class MarkitdownConverter implements Converter {
+  constructor(
+    private baseUrl: string = process.env.MARKITDOWN_URL ?? "",
+    private secret: string = process.env.MARKITDOWN_SECRET ?? "dev",
+  ) {}
+
+  async convert(bytes: Uint8Array, mimeType: string, filename?: string): Promise<string> {
+    if (!this.baseUrl) throw new Error("MARKITDOWN_URL is not configured");
+    const res = await fetch(`${this.baseUrl}/api/index`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/octet-stream",
+        "x-mime-type": mimeType,
+        "x-filename": filename ?? "",
+        "x-worker-secret": this.secret,
+      },
+      body: bytes as unknown as BodyInit,
+    });
+    if (!res.ok) throw new Error(`markitdown failed: ${res.status} ${await res.text()}`);
+    const data = await res.json() as { markdown: string };
+    return data.markdown;
+  }
+}
+
+/** Deterministic converter for tests. */
+export class MockConverter implements Converter {
+  constructor(private output = "# Converted\n\nMock document body about Kyoto ryokan.") {}
+  async convert(): Promise<string> { return this.output; }
+}
+```
+
+- [ ] **Step 2: Write the failing router test**
+
+Create `packages/ingest/src/router.test.ts`:
+
+```ts
+import { describe, it, expect, vi } from "vitest";
+import { convertToMarkdown } from "./router.js";
+import { MockConverter } from "./converter.js";
+
+const noopConv = new MockConverter();
+
+describe("convertToMarkdown", () => {
+  it("uses Readability for HTML and does not call the converter", async () => {
+    const conv = new MockConverter();
+    const spy = vi.spyOn(conv, "convert");
+    const r = await convertToMarkdown(
+      { mimeType: "text/html", text: "<html><head><title>T</title></head><body><article><p>Kyoto ryokan.</p></article></body></html>" },
+      conv,
+    );
+    expect(r.markdown).toContain("Kyoto ryokan");
+    expect(r.title).toBe("T");
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("passes plain text through unchanged", async () => {
+    const r = await convertToMarkdown({ mimeType: "text/plain", text: "Just a note." }, noopConv);
+    expect(r.markdown).toBe("Just a note.");
+    expect(r.wordCount).toBe(3);
+  });
+
+  it("routes binary documents to the converter", async () => {
+    const conv = new MockConverter("# PDF\n\nReport body.");
+    const r = await convertToMarkdown(
+      { mimeType: "application/pdf", bytes: new Uint8Array([1, 2, 3]), filename: "report.pdf" },
+      conv,
+    );
+    expect(r.markdown).toContain("Report body");
+    expect(r.title).toBe("report.pdf");
+  });
+
+  it("treats unknown mime that looks like HTML as HTML", async () => {
+    const r = await convertToMarkdown(
+      { mimeType: null, text: "<html><body><p>Hello world here.</p></body></html>" },
+      noopConv,
+    );
+    expect(r.markdown).toContain("Hello world");
+  });
+});
+```
+
+- [ ] **Step 3: Run test to verify it fails**
+
+Run: `pnpm vitest run packages/ingest/src/router.test.ts`
+Expected: FAIL — cannot find module `./router.js`.
+
+- [ ] **Step 4: Write the router**
+
+Create `packages/ingest/src/router.ts`:
+
+```ts
+import type { ConvertedContent } from "@gr/core";
+import type { Converter } from "./converter.js";
+import { extractContent } from "./extract.js";
+
+export interface RouterInput {
+  mimeType: string | null;
+  /** Text-ish sources: HTML or plain text. */
+  text?: string;
+  /** Binary sources: PDF / Office / images. */
+  bytes?: Uint8Array;
+  sourceUrl?: string | null;
+  filename?: string | null;
+}
+
+const countWords = (s: string) => s.split(/\s+/).filter(Boolean).length;
+const looksLikeHtml = (s: string) => /<html|<body|<article|<\/p>|<div/i.test(s);
+
+export async function convertToMarkdown(input: RouterInput, converter: Converter): Promise<ConvertedContent> {
+  const mime = input.mimeType;
+  const hasText = input.text !== undefined;
+
+  if (hasText && (mime?.includes("html") || (mime == null && looksLikeHtml(input.text!)))) {
+    return extractContent(input.text!, input.sourceUrl ?? null);
+  }
+  if (hasText && (mime?.startsWith("text/plain") || mime == null)) {
+    const md = input.text!.trim();
+    return { title: null, markdown: md, wordCount: countWords(md) };
+  }
+  if (input.bytes) {
+    const md = (await converter.convert(input.bytes, mime ?? "application/octet-stream", input.filename ?? undefined)).trim();
+    return { title: input.filename ?? null, markdown: md, wordCount: countWords(md) };
+  }
+  const md = (input.text ?? "").trim();
+  return { title: null, markdown: md, wordCount: countWords(md) };
+}
+```
+
+- [ ] **Step 5: Run test to verify it passes**
+
+Run: `pnpm vitest run packages/ingest/src/router.test.ts`
+Expected: PASS (4 tests).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add packages/ingest
+git commit -m "feat(ingest): Converter interface + multi-format router (markitdown)"
+```
+
+---
+
+## Task 7B: `services/convert` — markitdown Python service
+
+**Files:**
+- Create: `services/convert/api/index.py`, `services/convert/requirements.txt`, `services/convert/vercel.json`
+
+A standalone Vercel Python (Fluid Compute) function that converts document bytes to markdown via markitdown. Deployed as its own Vercel project; the Node worker calls it via `MARKITDOWN_URL`. No Node test depends on it (the pipeline is tested with `MockConverter`); functional verification happens at deploy.
+
+- [ ] **Step 1: Declare dependencies**
+
+Create `services/convert/requirements.txt`:
+
+```
+markitdown[all]
+```
+
+> Pin to the latest published `markitdown` version at implementation time. The `[all]` extra pulls in the PDF/docx/pptx/xlsx/image extractors.
+
+- [ ] **Step 2: Write the function**
+
+Create `services/convert/api/index.py`:
+
+```python
+import json
+import os
+import tempfile
+from http.server import BaseHTTPRequestHandler
+from markitdown import MarkItDown
+
+_md = MarkItDown()
+
+_EXT = {
+    "application/pdf": ".pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+}
+
+
+class handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        secret = os.environ.get("MARKITDOWN_SECRET", "dev")
+        if self.headers.get("x-worker-secret") != secret:
+            return self._send(403, {"error": "forbidden"})
+
+        length = int(self.headers.get("content-length", 0))
+        data = self.rfile.read(length)
+        mime = self.headers.get("x-mime-type", "application/octet-stream")
+        filename = self.headers.get("x-filename") or "upload"
+        ext = _EXT.get(mime) or os.path.splitext(filename)[1] or ".bin"
+
+        try:
+            with tempfile.NamedTemporaryFile(suffix=ext, delete=True) as tmp:
+                tmp.write(data)
+                tmp.flush()
+                result = _md.convert(tmp.name)
+            return self._send(200, {"markdown": result.text_content})
+        except Exception as exc:  # noqa: BLE001
+            return self._send(500, {"error": str(exc)})
+
+    def _send(self, code: int, body: dict):
+        payload = json.dumps(body).encode()
+        self.send_response(code)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+```
+
+- [ ] **Step 3: Configure the Vercel function**
+
+Create `services/convert/vercel.json`:
+
+```json
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": { "api/index.py": { "memory": 1024, "maxDuration": 60 } }
+}
+```
+
+- [ ] **Step 4: Syntax-check the handler**
+
+Run: `python3 -m py_compile services/convert/api/index.py`
+Expected: exit 0 (no syntax errors). `py_compile` checks syntax only and does not import markitdown, so it passes without the dependency installed. Full functional verification (real markitdown conversion) happens during the Vercel infra/deploy task in Plan 2.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add services/convert
+git commit -m "feat(convert): markitdown Python Fluid Compute service"
 ```
 
 ---
@@ -1479,10 +1754,12 @@ import { createDb } from "@gr/db";
 import { createUser, createKnowledgeBase, insertDocument, getDocument } from "@gr/db/queries";
 import { createMockAiClient } from "@gr/ai/mock";
 import { runIngestion } from "./pipeline.js";
+import { MockConverter } from "./converter.js";
 
 const URL = process.env.DATABASE_URL ?? "postgres://gr:gr@localhost:5433/gr_test";
 const { db, sql } = createDb(URL);
 const ai = createMockAiClient();
+const conv = new MockConverter();
 let userId: string, kbId: string;
 
 beforeAll(async () => {
@@ -1492,14 +1769,14 @@ beforeAll(async () => {
 afterAll(async () => { await sql.end(); });
 
 describe("runIngestion", () => {
-  it("parses, chunks, embeds, tags and marks the document ready", async () => {
+  it("parses HTML, chunks, embeds, tags and marks the document ready", async () => {
     const docId = await insertDocument(db, {
       kbId, addedBy: userId, kind: "web", captureMode: "full_dom",
       sourceUrl: "https://ex.com", title: null,
     });
-    await runIngestion(db, ai, {
-      documentId: docId, kbId, kind: "web",
-      rawContent: "<html><head><title>T</title></head><body><article><p>Kyoto ryokan stay.</p></article></body></html>",
+    await runIngestion(db, ai, conv, {
+      documentId: docId, kbId, mimeType: "text/html",
+      text: "<html><head><title>T</title></head><body><article><p>Kyoto ryokan stay.</p></article></body></html>",
     });
     const doc = await getDocument(db, docId, kbId);
     expect(doc?.status).toBe("ready");
@@ -1509,14 +1786,27 @@ describe("runIngestion", () => {
     expect((rows[0] as { n: number }).n).toBeGreaterThan(0);
   });
 
-  it("marks the document failed when extraction throws", async () => {
+  it("converts a binary document via the Converter and marks it ready", async () => {
     const docId = await insertDocument(db, {
-      kbId, addedBy: userId, kind: "web", captureMode: "full_dom",
-      sourceUrl: null, title: null,
+      kbId, addedBy: userId, kind: "pdf", captureMode: "upload",
+      sourceUrl: null, title: null, mimeType: "application/pdf",
     });
-    // null content forces a throw inside the pipeline
-    await expect(runIngestion(db, ai, {
-      documentId: docId, kbId, kind: "web", rawContent: null as unknown as string,
+    await runIngestion(db, ai, new MockConverter("# PDF\n\nKyoto ryokan report body."), {
+      documentId: docId, kbId, mimeType: "application/pdf",
+      bytes: new Uint8Array([1, 2, 3]), filename: "report.pdf",
+    });
+    const doc = await getDocument(db, docId, kbId);
+    expect(doc?.status).toBe("ready");
+  });
+
+  it("marks the document failed when there is no content", async () => {
+    const docId = await insertDocument(db, {
+      kbId, addedBy: userId, kind: "text", captureMode: "selection",
+      sourceUrl: null, title: null, mimeType: "text/plain",
+    });
+    // empty text → router yields empty markdown → pipeline throws "no content to ingest"
+    await expect(runIngestion(db, ai, conv, {
+      documentId: docId, kbId, mimeType: "text/plain", text: "",
     })).rejects.toThrow();
     const doc = await getDocument(db, docId, kbId);
     expect(doc?.status).toBe("failed");
@@ -1539,7 +1829,8 @@ import { eq } from "drizzle-orm";
 import type { AiClient } from "@gr/ai";
 import { schema, type NewChunk } from "@gr/db";
 import { insertChunks, setDocumentReady, setDocumentFailed } from "@gr/db/queries";
-import { extractContent } from "./extract.js";
+import { convertToMarkdown } from "./router.js";
+import type { Converter } from "./converter.js";
 import { chunkText } from "./chunk.js";
 
 type Db = ReturnType<typeof drizzle>;
@@ -1547,18 +1838,25 @@ type Db = ReturnType<typeof drizzle>;
 export interface IngestionWork {
   documentId: string;
   kbId: string;
-  kind: "web" | "pdf" | "text";
-  rawContent: string;
+  mimeType: string | null;
+  /** Text-ish sources (HTML / plain text). */
+  text?: string;
+  /** Binary sources (PDF / Office / images). */
+  bytes?: Uint8Array;
+  sourceUrl?: string | null;
+  filename?: string | null;
 }
 
-export async function runIngestion(db: Db, ai: AiClient, work: IngestionWork): Promise<void> {
+export async function runIngestion(db: Db, ai: AiClient, converter: Converter, work: IngestionWork): Promise<void> {
   try {
     await db.update(schema.documents).set({ status: "processing" })
       .where(eq(schema.documents.id, work.documentId));
 
-    const extracted = work.kind === "web"
-      ? extractContent(work.rawContent, null)
-      : { title: null, markdown: work.rawContent.trim(), wordCount: work.rawContent.trim().split(/\s+/).length };
+    // Route by format: HTML → Readability, text → passthrough, binary → markitdown.
+    const extracted = await convertToMarkdown({
+      mimeType: work.mimeType, text: work.text, bytes: work.bytes,
+      sourceUrl: work.sourceUrl, filename: work.filename,
+    }, converter);
 
     const pieces = chunkText(extracted.markdown, { maxTokens: 800, overlapTokens: 100 });
     if (pieces.length === 0) throw new Error("no content to ingest");
@@ -1594,6 +1892,8 @@ Create `packages/ingest/src/index.ts`:
 ```ts
 export { extractContent } from "./extract.js";
 export { chunkText } from "./chunk.js";
+export { convertToMarkdown, type RouterInput } from "./router.js";
+export { type Converter, MarkitdownConverter, MockConverter } from "./converter.js";
 export { runIngestion, type IngestionWork } from "./pipeline.js";
 ```
 
@@ -1602,13 +1902,13 @@ export { runIngestion, type IngestionWork } from "./pipeline.js";
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `DATABASE_URL=postgres://gr:gr@localhost:5433/gr_test pnpm vitest run packages/ingest/src/pipeline.test.ts`
-Expected: PASS (2 tests).
+Expected: PASS (3 tests).
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add packages/ingest
-git commit -m "feat(ingest): ingestion pipeline orchestrator (parse→chunk→embed→tag)"
+git commit -m "feat(ingest): pipeline orchestrator routing HTML/text/markitdown"
 ```
 
 ---
@@ -1773,12 +2073,14 @@ import { randomUUID } from "node:crypto";
 import { createDb, schema } from "@gr/db";
 import { createUser, createKnowledgeBase, getDocument } from "@gr/db/queries";
 import { createMockAiClient } from "@gr/ai/mock";
+import { MockConverter } from "@gr/ingest";
 import { hashToken } from "../lib/auth.js";
 import { ingestAndProcess } from "../lib/ingest-service.js";
 
 const URL = process.env.DATABASE_URL ?? "postgres://gr:gr@localhost:5433/gr_test";
 const { db, sql } = createDb(URL);
 const ai = createMockAiClient();
+const conv = new MockConverter();
 let userId: string, kbId: string, token: string;
 
 beforeAll(async () => {
@@ -1793,9 +2095,9 @@ afterAll(async () => { await sql.end(); });
 
 describe("ingest → process → retrievable", () => {
   it("ingests selection text and makes it answerable", async () => {
-    const { documentId } = await ingestAndProcess(db, ai, {
+    const { documentId } = await ingestAndProcess(db, ai, conv, {
       kbId, addedBy: userId, captureMode: "selection", kind: "text",
-      sourceUrl: null, title: "Kyoto note",
+      mimeType: "text/plain", sourceUrl: null, title: "Kyoto note",
       rawContent: "Tawaraya is a historic ryokan in central Kyoto.",
     });
     const doc = await getDocument(db, documentId, kbId);
@@ -1824,7 +2126,7 @@ import type { AiClient } from "@gr/ai";
 import type { IngestInput } from "@gr/core";
 import { schema } from "@gr/db";
 import { insertDocument } from "@gr/db/queries";
-import { runIngestion } from "@gr/ingest";
+import { runIngestion, type Converter } from "@gr/ingest";
 
 type Db = ReturnType<typeof drizzle>;
 
@@ -1833,6 +2135,9 @@ export async function enqueueIngestion(db: Db, input: IngestInput) {
   const documentId = await insertDocument(db, {
     kbId: input.kbId, addedBy: input.addedBy, kind: input.kind,
     captureMode: input.captureMode, sourceUrl: input.sourceUrl, title: input.title,
+    mimeType: input.mimeType,
+    // Interim: stash text payload until the Blob round-trip lands in Plan 2.
+    metadata: input.rawContent ? { rawContent: input.rawContent } : null,
   });
   const jobId = `job_${randomUUID().slice(0, 12)}`;
   await db.insert(schema.ingestionJobs).values({ id: jobId, documentId, type: "ingest", status: "queued" });
@@ -1840,19 +2145,19 @@ export async function enqueueIngestion(db: Db, input: IngestInput) {
 }
 
 /** Run the pipeline for a queued job (called by the worker). */
-export async function processJob(db: Db, ai: AiClient, args: {
-  documentId: string; kbId: string; kind: "web" | "pdf" | "text"; rawContent: string;
+export async function processJob(db: Db, ai: AiClient, converter: Converter, args: {
+  documentId: string; kbId: string; mimeType: string | null;
+  text?: string; bytes?: Uint8Array; sourceUrl?: string | null; filename?: string | null;
 }) {
-  await runIngestion(db, ai, args);
+  await runIngestion(db, ai, converter, args);
 }
 
 /** Convenience for tests / synchronous flows: enqueue + process inline. */
-export async function ingestAndProcess(db: Db, ai: AiClient, input: IngestInput) {
+export async function ingestAndProcess(db: Db, ai: AiClient, converter: Converter, input: IngestInput) {
   const { documentId } = await enqueueIngestion(db, input);
-  await processJob(db, ai, {
-    documentId, kbId: input.kbId,
-    kind: input.kind === "pdf" ? "pdf" : input.kind === "text" ? "text" : "web",
-    rawContent: input.rawContent,
+  await processJob(db, ai, converter, {
+    documentId, kbId: input.kbId, mimeType: input.mimeType,
+    text: input.rawContent, sourceUrl: input.sourceUrl, filename: input.title,
   });
   return { documentId };
 }
@@ -1889,9 +2194,12 @@ export async function POST(req: NextRequest) {
 
   const captureMode: CaptureMode = body.captureMode ?? (body.html ? "full_dom" : body.text ? "selection" : "url_fetch");
   const kind: DocumentKind = body.html || body.url ? "web" : "text";
+  // Plan 1 accepts text/html payloads. A bare `url` pointing at a binary doc
+  // (PDF/Office/image) is fetched + typed server-side in Plan 2; mimeType stays null here.
+  const mimeType: string | null = body.html ? "text/html" : body.text ? "text/plain" : null;
 
   const { documentId, jobId } = await enqueueIngestion(db, {
-    kbId: body.kbId, addedBy: auth.userId, captureMode, kind,
+    kbId: body.kbId, addedBy: auth.userId, captureMode, kind, mimeType,
     sourceUrl: body.url ?? null, title: body.title ?? null,
     rawContent: body.html ?? body.text ?? "",
   });
@@ -1912,6 +2220,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { createDb, schema } from "@gr/db";
 import { createAiClient } from "@gr/ai";
+import { MarkitdownConverter } from "@gr/ingest";
 import { processJob } from "../../../lib/ingest-service.js";
 
 export async function POST(req: NextRequest) {
@@ -1925,30 +2234,22 @@ export async function POST(req: NextRequest) {
   const doc = docRows[0];
   if (!doc) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  // Raw content lives in Blob in production; in Plan 1 we re-read from metadata for web/text.
-  // For the prototype the route receives rawContent via metadata set at enqueue time (added in infra).
-  const rawContent = (doc.metadata as { rawContent?: string } | null)?.rawContent ?? "";
-  await processJob(db, createAiClient(), {
-    documentId, kbId: doc.kbId,
-    kind: doc.kind === "pdf" ? "pdf" : doc.kind === "text" ? "text" : "web",
-    rawContent,
+  // Interim: text payload comes from metadata; Plan 2 reads bytes from Blob for binary kinds.
+  const text = (doc.metadata as { rawContent?: string } | null)?.rawContent ?? "";
+  await processJob(db, createAiClient(), new MarkitdownConverter(), {
+    documentId, kbId: doc.kbId, mimeType: doc.mimeType,
+    text, sourceUrl: doc.sourceUrl, filename: doc.title,
   });
   return NextResponse.json({ ok: true });
 }
 ```
 
-> **Wiring note for infra setup (not a blocker for tests):** `enqueueIngestion` should persist `rawContent` to Vercel Blob and store the `blobKey`; the worker reads it back. For Plan 1's tests we exercise the pipeline via `ingestAndProcess` (in-process), which passes `rawContent` directly — so the HTTP worker's Blob round-trip is implemented during the Vercel infra task in Plan 2. Store `rawContent` in `documents.metadata` at enqueue time as the interim mechanism: update `enqueueIngestion` to set `metadata: { rawContent: input.rawContent }`.
+> **Wiring note for infra setup (not a blocker for tests):** `enqueueIngestion` already stashes the text payload in `documents.metadata` (interim). In Plan 2, persist the raw payload (text *or* binary bytes) to Vercel Blob and store `blobKey`; the worker reads it back and passes `bytes` for binary kinds so `MarkitdownConverter` is exercised live. Plan 1's tests drive the pipeline via `ingestAndProcess` (in-process) with `MockConverter`, so no deployed markitdown service is required to make the suite green.
 
-- [ ] **Step 6: Apply the interim rawContent persistence**
+- [ ] **Step 6: Run the app tests**
 
-Edit `apps/web/lib/ingest-service.ts` `enqueueIngestion`: pass `metadata` through `insertDocument`. First extend `insertDocument` in `packages/db/src/queries.ts` to accept optional `metadata`:
-```ts
-// add to the param type: metadata?: unknown
-// add to the insert values: metadata: d.metadata ?? null,
-```
-Then in `enqueueIngestion`, pass `metadata: { rawContent: input.rawContent }` into `insertDocument`.
 Run: `DATABASE_URL=postgres://gr:gr@localhost:5433/gr_test pnpm vitest run apps/web`
-Expected: PASS (auth + e2e).
+Expected: PASS (auth + e2e). (`insertDocument` already accepts `mimeType` + `metadata` from Task 5, so no further query change is needed.)
 
 - [ ] **Step 7: Typecheck the whole repo and commit**
 
@@ -2006,8 +2307,9 @@ git commit -m "docs: add backend-core README and finalize Plan 1"
 
 ## Self-Review notes (addressed)
 
-- **Spec coverage:** ingest API (Task 14), capture modes (`core` types + route), async pipeline shape (enqueue/process split, Task 14), parse→chunk→embed→tag (Tasks 6/7/12), hybrid retrieval + rerank seam (Tasks 10/11), grounded-answer + honest-refusal guardrail (`AiClient.answer`, Task 9), configurable provider + embedding-dim guard (Task 8), multi-tenant data model + `added_by`/`kb_members`/reserved `updated_at`/`update_count` seams (Task 4), API-token auth for headless clients (Task 13), token accounting (`answer` returns `tokens`). Chat persistence (conversations/messages) and the rich UI are intentionally Plan 2.
-- **Deferred to Plan 2 (web):** Clerk UI auth, library/search/chat UI, streaming generation endpoint persisting `messages`, import flow, Vercel Blob round-trip for `rawContent`, Vercel Queues wiring. **Deferred to Plan 3 (clients):** WXT extension, iOS Shortcut, Android PWA target.
-- **Type consistency:** `AiClient` methods (`embed`/`tag`/`answer`/`rerank`) identical in `index.ts` and `mock.ts`; `RankedChunk` defined once in `@gr/core` and re-exported; `IngestInput` shared by route + service; query-helper signatures used consistently across Tasks 5/11/12/14.
-- **Known interim:** worker reads `rawContent` from `documents.metadata` until the Blob round-trip lands in Plan 2 (flagged in Task 14).
+- **Spec coverage:** ingest API (Task 14), capture modes (`core` types + route), async pipeline shape (enqueue/process split, Task 14), detect→parse/convert→chunk→embed→tag (Tasks 6/7/7A/12), **multi-format ingestion via markitdown** (`Converter` interface + format router Task 7A; Python service Task 7B; pipeline routing Task 12; `mime_type` column Task 4), hybrid retrieval + rerank seam (Tasks 10/11), grounded-answer + honest-refusal guardrail (`AiClient.answer`, Task 9), configurable provider + embedding-dim guard (Task 8), multi-tenant data model + `added_by`/`kb_members`/reserved `updated_at`/`update_count` seams (Task 4), API-token auth for headless clients (Task 13), token accounting (`answer` returns `tokens`). Chat persistence (conversations/messages) and the rich UI are intentionally Plan 2.
+- **Deferred to Plan 2 (web):** Clerk UI auth, library/search/chat UI, streaming generation endpoint persisting `messages`, import flow, Vercel Blob round-trip for raw payloads (incl. binary bytes for live markitdown), Vercel Queues wiring, server-side fetch+typing of `url`-only ingests. **Deferred to Plan 3 (clients):** WXT extension, iOS Shortcut, Android PWA target. **Deferred to Stage 3:** audio/video transcription (also a markitdown capability).
+- **Type consistency:** `AiClient` methods (`embed`/`tag`/`answer`/`rerank`) identical in `index.ts` and `mock.ts`; `Converter.convert` identical across `MarkitdownConverter`/`MockConverter` and consumed by `convertToMarkdown` (Task 7A) + `runIngestion` (Task 12) + `processJob`/`ingestAndProcess` (Task 14); `RankedChunk`/`ConvertedContent`/`IngestInput` defined once in `@gr/core`; `IngestionWork` (`mimeType`/`text`/`bytes`) consistent across Tasks 12/14; `insertDocument` (`mimeType`/`metadata`) defined in Task 5 and used in Task 14.
+- **Known interim:** the HTTP worker reads the text payload from `documents.metadata` until the Blob round-trip lands in Plan 2 (flagged in Task 14); binary `bytes` → live `MarkitdownConverter` is exercised at deploy, not in Plan 1's suite (pipeline uses `MockConverter`).
+- **markitdown phase decision:** included in **Stage 0** (core to "save the web, ask your library"); implemented as a Node-side `Converter` abstraction (tested via mock) + an isolated Python Fluid Compute service (Task 7B), syntax-checked here and functionally verified at deploy.
 ```

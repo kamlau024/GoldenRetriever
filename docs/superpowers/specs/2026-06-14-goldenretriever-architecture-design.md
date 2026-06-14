@@ -14,7 +14,8 @@
 - Browser extension (Chrome MV3) that captures the **authenticated rendered DOM** of a page.
 - **Mobile capture** from iOS via the Share Sheet (iOS Shortcut → ingest API); Android via PWA share target.
 - Client-agnostic, token-authenticated **ingest API** shared by all clients.
-- Async **ingestion pipeline**: parse → chunk → embed → lightweight LLM auto-tagging → store.
+- Async **ingestion pipeline**: detect format → parse/convert → chunk → embed → lightweight LLM auto-tagging → store.
+- **Multi-format document ingestion**: URLs or uploads pointing to non-HTML documents (PDF, Word/PowerPoint/Excel, images) are converted to markdown via **markitdown** (Microsoft) running as a Python Fluid Compute service; HTML uses Readability, plain text passes through.
 - **Hybrid retrieval** (dense pgvector + sparse Postgres FTS) → rerank → **grounded RAG Q&A with citations**.
 - Import flow (bookmarks / Pocket / Readwise export) — bulk URL ingestion through the same pipeline.
 - Web app: library view, search, chat, settings (API tokens).
@@ -27,6 +28,8 @@
 - **Stage 4** Team/Enterprise: SSO/SAML/SCIM, SOC 2, RBAC, admin console, audit logs.
 
 > **Decision (2026-06-14):** Document refresh + RSS/feed auto-ingestion is **deferred to Stage 3** to keep the prototype lean. The `documents` table retains reserved `updated_at` / `update_count` columns as a forward seam (default null / 0; populated from Stage 3), but no refresh pipeline, polling, conditional-fetch fields, feed subscriptions, or cron scheduler are built now.
+
+> **Decision (2026-06-14):** Multi-format document ingestion via **markitdown** is **included in Stage 0** — it's core to "save the web, ask your library" (people save PDFs and docs constantly). It is implemented as a `Converter` abstraction in the ingestion pipeline plus a Python markitdown service on Vercel Fluid Compute. Audio/video transcription (also a markitdown capability) stays **out of scope** until Stage 3.
 
 ### Design principles
 - **Multi-tenant from day one** — every record is scoped to a `knowledge_base`; solo users simply have one personal KB. This is the seam that makes Stage 1 a drop-in, not a rewrite.
@@ -53,6 +56,7 @@
 | Rerank (default) | `cohere/rerank-3.5` | Table-stakes retrieval quality; swappable |
 | Object storage | Vercel Blob | Raw HTML snapshots + uploaded PDFs |
 | Async ingestion | **Vercel Queues** + DB job rows | Durable parse→chunk→embed off the request path |
+| Doc conversion | **markitdown** (Python, Fluid Compute) | PDF / Office / images → markdown; HTML uses Readability, text passes through |
 
 ---
 
@@ -70,7 +74,8 @@ flowchart TB
     subgraph Vercel["Vercel (Fluid Compute)"]
         INGEST["POST /api/ingest<br/>Clerk session OR API token"]
         QUEUE["Vercel Queue"]
-        WORKER["Worker fn<br/>parse · chunk · embed · tag"]
+        WORKER["Worker fn<br/>detect · parse/convert · chunk · embed · tag"]
+        CONV["markitdown converter<br/>(Python Fluid Compute)<br/>PDF · docx · pptx · xlsx · images"]
         UI["Web App UI<br/>library · search · chat · settings"]
         RAG["Retrieval / RAG<br/>hybrid → rerank → grounded generate"]
     end
@@ -95,6 +100,7 @@ flowchart TB
 
     WORKER --> GW
     WORKER --> DB
+    WORKER -->|non-HTML formats| CONV
 
     UI --> RAG
     UI -.->|session| CLERK
@@ -106,14 +112,14 @@ flowchart TB
 
 ## 4. Clients & capture modes
 
-All clients call **one** client-agnostic, token-authenticated ingest endpoint. There are two capture modes, with different quality characteristics:
+All clients call **one** client-agnostic, token-authenticated ingest endpoint. Capture modes differ in source and quality characteristics:
 
 | Capture mode | Source | Quality | Notes |
 |---|---|---|---|
 | `full_dom` | Desktop extension | **Best** | Sends authenticated rendered DOM → handles paywalls/JS-heavy SPAs the server can't reach |
 | `selection` | Extension / mobile share of selected text | High | Ingests the exact text the user highlighted |
-| `url_fetch` | Mobile share of a bare URL | **Degraded** | Server-side fetch + parse; cannot see the user's authenticated session — expected limitation |
-| `upload` | Web app file upload (PDF) | Good | Parsed server-side |
+| `url_fetch` | Mobile share / paste of a bare URL | **Mixed** | Server-side fetch + parse. Degraded for paywalled/JS HTML (no auth session); **good** for URLs that point directly at a document (PDF/Office/image) — those are downloaded and converted via markitdown |
+| `upload` | Web app file upload (PDF / Office / image) | Good | Converted to markdown server-side via markitdown |
 
 **Authentication:**
 - Web app + extension UI → **Clerk session**.
@@ -130,9 +136,13 @@ All clients call **one** client-agnostic, token-authenticated ingest endpoint. T
 Chosen approach: **async via Vercel Queues + worker function**, with the job logic written behind a small interface so it can fall back to a DB-job-table + cron drainer if the Queues beta is problematic. Both share the same `ingestion_jobs` table and worker code.
 
 Flow:
-1. `POST /api/ingest` authenticates (Clerk session or API token), resolves the target KB, writes a `documents` row (`status='pending'`), stores the raw payload (HTML/PDF/text) to Blob, enqueues a job, returns immediately with the document id.
+1. `POST /api/ingest` authenticates (Clerk session or API token), resolves the target KB, writes a `documents` row (`status='pending'`), stores the raw payload (HTML / document bytes / text) to Blob, enqueues a job, returns immediately with the document id.
 2. Worker drains the queue:
-   - **Parse**: HTML → main content via Mozilla Readability → markdown (turndown). PDF → text extraction. Selection/text → used directly.
+   - **Detect format**: from the HTTP `Content-Type`, file extension, or magic bytes → choose a converter.
+   - **Parse / convert** (behind a `Converter` interface):
+     - `text/html` → main content via Mozilla Readability → markdown (turndown).
+     - `application/pdf`, Office (`docx`/`pptx`/`xlsx`), `image/*`, and other binary formats → **markitdown** Python service → markdown (images via OCR; optional LLM image description through the configured generation model).
+     - `text/plain` / selection text → used directly.
    - **Chunk**: recursive/semantic chunking (~500–1000 tokens, with overlap), preserving ordinal order.
    - **Embed**: embed each chunk via the configured embedding model; store `embedding` + `embedding_model`.
    - **Tag**: lightweight LLM auto-tagging/classification (NOT a graph) → `tags` / `document_tags`.
@@ -198,7 +208,8 @@ users           id (= Clerk user id), email, name, image_url, created_at
 api_tokens      id, user_id, name, token_hash, last_used_at, revoked_at, created_at
 knowledge_bases id, owner_id, name, kind('personal'|'shared'), created_at
 kb_members      kb_id, user_id, role('owner'|'editor'|'viewer')        -- Stage-1 seam (solo: owner only)
-documents       id, kb_id, added_by, source_url, title, kind('web'|'pdf'|'text'),
+documents       id, kb_id, added_by, source_url, title,
+                kind('web'|'pdf'|'document'|'image'|'text'), mime_type,
                 capture_mode('full_dom'|'selection'|'url_fetch'|'upload'),
                 status('pending'|'processing'|'ready'|'failed'),
                 blob_key, lang, word_count,
@@ -221,6 +232,7 @@ messages        id, conversation_id, role('user'|'assistant'), content,
 - `documents.added_by` — populated now (= owner in solo) so Stage-1 attribution badges are free.
 - `kb_members` — present but trivial in solo; the seam for shared bases + roles.
 - `ingestion_jobs.type` — only `'ingest'` in Stage 0; `'refresh'` / `'feed-check'` types are added at Stage 3.
+- `documents.mime_type` — the detected source MIME type; drives converter routing (Readability vs markitdown vs passthrough). `kind` is the coarse category.
 
 **Indexes**
 - `chunks`: HNSW on `embedding` (`vector_cosine_ops`); GIN on `fts`.
@@ -240,6 +252,7 @@ messages        id, conversation_id, role('user'|'assistant'), content,
 | AI models | Vercel AI Gateway | Vercel | Embeddings, generation, tagging, rerank |
 | Object storage | Vercel Blob | Vercel | Raw HTML snapshots, uploaded PDFs |
 | Queue | Vercel Queues | Vercel | Durable ingestion jobs |
+| Doc conversion | markitdown (Python) | Vercel Fluid Compute (separate function) | Convert PDF/Office/images → markdown |
 | Browser extension dist | Chrome Web Store | manual | Distribution of the WXT extension |
 | Mobile capture | iOS Shortcut / Android PWA | user setup | Share-to-GoldenRetriever |
 
@@ -260,10 +273,12 @@ goldenretriever/
 ├─ packages/
 │  ├─ core/        domain types, KB/document/job logic
 │  ├─ db/          Drizzle schema, migrations, scoped query helpers
-│  ├─ ingest/      parse (Readability→markdown), chunk
+│  ├─ ingest/      format router, Converter iface, parse (Readability→md), chunk
 │  ├─ ai/          model config + embed/generate/rerank via Gateway
 │  ├─ retrieval/   Retriever interface + HybridRetriever (Graph seam)
 │  └─ config/      shared zod env schema, tsconfig, eslint presets
+├─ services/
+│  └─ convert/     markitdown Python function (Vercel Fluid Compute)
 ├─ docs/superpowers/specs/      design docs (this file)
 ├─ vercel.ts                    project config
 ├─ turbo.json
@@ -282,6 +297,7 @@ Dependency direction is one-way: `core`/`db` → `ingest`/`ai`/`retrieval` → a
 | Embeddings | ~$0.02 / 1M tokens | embed once on ingest |
 | Generation | the real COGS | per-message `tokens` tally → tier metering seam |
 | Rerank | small per query | isolated behind `ai` package |
+| Doc conversion (markitdown) | mostly CPU (cheap); OCR / LLM image description cost only when used | basic PDF/Office conversion is local CPU; gate LLM image description |
 | Knowledge graph | **deferred** | behind `Retriever` interface; LazyGraphRAG + paid-gated when added |
 
 ---
@@ -318,7 +334,7 @@ Dependency direction is one-way: `core`/`db` → `ingest`/`ai`/`retrieval` → a
 
 ## 15. Risks carried from research
 
-- **Ingestion fragility (permanent maintenance tax):** mitigated by client-side authenticated DOM capture; mobile URL-fetch is explicitly degraded; budget ongoing parser upkeep.
+- **Ingestion fragility (permanent maintenance tax):** mitigated by client-side authenticated DOM capture; mobile URL-fetch is explicitly degraded; multi-format conversion is isolated in the markitdown Python service (formats break differently — budget ongoing parser/converter upkeep); large/scanned files and OCR add latency/cost.
 - **Copyright/ToS exposure:** user-initiated personal capture + first-class delete/takedown + private snapshots.
 - **Cost-runaway (GraphRAG/generation):** graph deferred + gated; token metering seam.
 - **Cold-start "blank brain":** import flow (bookmarks/Pocket/Readwise) seeds the corpus quickly. (Feed-driven seeding arrives with refresh/RSS at Stage 3.)
@@ -330,5 +346,6 @@ Dependency direction is one-way: `core`/`db` → `ingest`/`ai`/`retrieval` → a
 - Embedding model is pinned at 1536 dims for the prototype; revisit if a higher-quality model with different dims is desired (requires re-embed migration).
 - Queue vs. DB-job-table: default to Vercel Queues; the worker interface allows falling back to a cron-drained `ingestion_jobs` table if the beta is problematic.
 - Reranker provider (Cohere default) to be confirmed once AI Gateway model availability is verified during setup.
-- PDF parsing: start with Node-based extraction; escalate to a Python (Fluid Compute) parser only if quality on the target-200 sites is insufficient.
+- Document conversion uses **markitdown** (Python, Fluid Compute) for PDF/Office/images; HTML stays on Node Readability. Image OCR is built in; LLM-based image description is optional and, when enabled, routes through the configured generation model (a metered cost — off by default).
+- markitdown runs as a **separate Vercel function** (isolated Python runtime) called by the worker over HTTP via `MARKITDOWN_URL`; the Node pipeline talks to it behind a `Converter` interface (mocked in tests).
 - Document refresh + RSS/feeds deferred to Stage 3 (decision 2026-06-14) to reduce prototype complexity.
