@@ -1,0 +1,21 @@
+{
+  "name": "@gr/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/client.ts",
+    "./queries": "./src/queries.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push"
+  },
+  "dependencies": {
+    "@gr/config": "workspace:*",
+    "drizzle-orm": "^0.36.0",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": { "drizzle-kit": "^0.28.0" }
+}
