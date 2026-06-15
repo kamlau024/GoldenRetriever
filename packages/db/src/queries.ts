@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/postgres-js";
 import { users, knowledgeBases, kbMembers, documents, chunks } from "./schema.js";
 import type { NewChunk } from "./schema.js";
@@ -53,4 +53,24 @@ export async function getDocument(db: Db, docId: string, kbId: string) {
   const rows = await db.select().from(documents)
     .where(and(eq(documents.id, docId), eq(documents.kbId, kbId)));
   return rows[0];
+}
+
+export async function upsertUser(db: Db, u: { id: string; email: string; name?: string; imageUrl?: string }) {
+  await db.insert(users).values({ id: u.id, email: u.email, name: u.name, imageUrl: u.imageUrl })
+    .onConflictDoUpdate({ target: users.id, set: { email: u.email, name: u.name, imageUrl: u.imageUrl } });
+  return u.id;
+}
+
+export async function getOrCreatePersonalKb(db: Db, userId: string) {
+  const existing = await db.select().from(knowledgeBases)
+    .where(and(eq(knowledgeBases.ownerId, userId), eq(knowledgeBases.kind, "personal")));
+  if (existing[0]) return existing[0].id;
+  return createKnowledgeBase(db, { ownerId: userId, name: "My Library" });
+}
+
+export async function listDocuments(db: Db, kbId: string, limit = 100) {
+  return db.select({
+    id: documents.id, title: documents.title, sourceUrl: documents.sourceUrl,
+    kind: documents.kind, status: documents.status, capturedAt: documents.capturedAt,
+  }).from(documents).where(eq(documents.kbId, kbId)).orderBy(desc(documents.createdAt)).limit(limit);
 }
