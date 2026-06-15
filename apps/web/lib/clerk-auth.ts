@@ -13,7 +13,14 @@ export async function resolveAuth(db: Db, req: Request): Promise<Principal | nul
     return tok ? { userId: tok.userId } : null;
   }
   // Clerk session (web UI). Ensure the local user row exists; production uses a Clerk webhook.
-  const { userId } = await auth();
+  // `auth()` throws outside a clerkMiddleware request context (e.g. unit tests); treat that —
+  // and a signed-out session — as unauthenticated.
+  let userId: string | null;
+  try {
+    ({ userId } = await auth());
+  } catch {
+    return null;
+  }
   if (!userId) return null;
   const u = await currentUser();
   await upsertUser(db, {
