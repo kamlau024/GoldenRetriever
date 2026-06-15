@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { Transcript } from "./chat.js";
+import { Transcript, safeHref } from "./chat.js";
 
 describe("Transcript", () => {
   it("renders user and assistant turns with a citation chip", () => {
@@ -10,6 +10,24 @@ describe("Transcript", () => {
     ]} />);
     expect(screen.getByText("where to stay?")).toBeTruthy();
     expect(screen.getByText(/Tawaraya/)).toBeTruthy();
-    expect(screen.getByText("Kyoto")).toBeTruthy();
+    const link = screen.getByText("Kyoto") as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toBe("https://x");
+  });
+
+  it("neutralizes a javascript: citation URL (XSS guard)", () => {
+    render(<Transcript messages={[
+      { id: "1", role: "assistant", content: "evil", citations: [{ title: "x", sourceUrl: "javascript:alert(1)" }] },
+    ]} />);
+    expect((screen.getByText("x") as HTMLAnchorElement).getAttribute("href")).toBe("#");
+  });
+});
+
+describe("safeHref", () => {
+  it("allows http(s) and rejects other schemes", () => {
+    expect(safeHref("https://ok.dev")).toBe("https://ok.dev");
+    expect(safeHref("http://ok.dev")).toBe("http://ok.dev");
+    expect(safeHref("javascript:alert(1)")).toBe("#");
+    expect(safeHref("data:text/html,<script>")).toBe("#");
+    expect(safeHref(null)).toBe("#");
   });
 });

@@ -4,6 +4,18 @@ import { useState, type FormEvent } from "react";
 export interface Citation { title: string | null; sourceUrl: string | null; }
 export interface Turn { id: string; role: string; content: string; citations?: Citation[]; }
 
+/** Only allow http(s) hrefs; anything else (e.g. `javascript:`) becomes inert. Prevents XSS
+ *  from a user-controlled saved URL rendered as a citation link. */
+export function safeHref(u: string | null | undefined): string {
+  if (!u) return "#";
+  try {
+    const { protocol } = new URL(u, "http://_");
+    return protocol === "http:" || protocol === "https:" ? u : "#";
+  } catch {
+    return "#";
+  }
+}
+
 export function Transcript({ messages }: { messages: Turn[] }) {
   return (
     <div className="space-y-4">
@@ -13,7 +25,7 @@ export function Transcript({ messages }: { messages: Turn[] }) {
           {m.citations?.length ? (
             <div className="mt-1 flex flex-wrap gap-1">
               {m.citations.map((c, i) => (
-                <a key={i} href={c.sourceUrl ?? "#"} className="rounded bg-amber-100 px-2 py-0.5 text-xs">{c.title ?? "source"}</a>
+                <a key={i} href={safeHref(c.sourceUrl)} target="_blank" rel="noopener noreferrer" className="rounded bg-amber-100 px-2 py-0.5 text-xs">{c.title ?? "source"}</a>
               ))}
             </div>
           ) : null}
