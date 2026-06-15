@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/postgres-js";
 import type { AiClient } from "@gr/ai";
 import type { RankedChunk } from "@gr/core";
+import type { Retriever } from "./index.js";
 import { fuseRrf } from "./rrf.js";
 
 type Db = ReturnType<typeof drizzle>;
@@ -15,7 +16,7 @@ interface Row {
 const CANDIDATES = 40;
 const TOP_K = 8;
 
-export class HybridRetriever {
+export class HybridRetriever implements Retriever {
   constructor(private db: Db, private ai: AiClient) {}
 
   async retrieve(kbId: string, query: string): Promise<RankedChunk[]> {
