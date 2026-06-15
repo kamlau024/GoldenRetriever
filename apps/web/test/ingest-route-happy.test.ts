@@ -30,7 +30,7 @@ beforeAll(async () => {
     id: `tok_${randomUUID().slice(0, 8)}`, userId: owner, name: "h", tokenHash: hashToken(token),
   });
   // Inject deterministic deps so the in-process path makes no live model calls.
-  __setIngestDeps({ ai, converter: new MockConverter() });
+  __setIngestDeps({ ai, converter: new MockConverter(), urlFetcher: async () => ({ kind: "text" as const, mimeType: "text/plain", text: "" }) });
 });
 afterAll(async () => { __setIngestDeps(null); await sql.end(); });
 

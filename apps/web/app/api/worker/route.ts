@@ -3,7 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { createDb, schema } from "@gr/db";
 import { createAiClient } from "@gr/ai";
-import { MarkitdownConverter } from "@gr/ingest";
+import { MarkitdownConverter, fetchUrlContent } from "@gr/ingest";
 import { processJob } from "../../../lib/ingest-service.js";
 
 function secretOk(provided: string, expected: string): boolean {
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
   // Interim: text payload comes from metadata; Plan 2 reads bytes from Blob for binary kinds.
   const text = (doc.metadata as { rawContent?: string } | null)?.rawContent ?? "";
-  await processJob(db, createAiClient(), new MarkitdownConverter(), {
+  await processJob(db, createAiClient(), new MarkitdownConverter(), fetchUrlContent, {
     documentId, kbId: doc.kbId, mimeType: doc.mimeType,
     text, sourceUrl: doc.sourceUrl, filename: doc.title,
   });

@@ -4,7 +4,7 @@ import { createAiClient, type AiClient } from "@gr/ai";
 import type { IngestInput } from "@gr/core";
 import { schema } from "@gr/db";
 import { insertDocument } from "@gr/db/queries";
-import { runIngestion, MarkitdownConverter, type Converter } from "@gr/ingest";
+import { runIngestion, MarkitdownConverter, fetchUrlContent, type Converter, type UrlFetcher } from "@gr/ingest";
 
 type Db = ReturnType<typeof drizzle>;
 
@@ -23,17 +23,17 @@ export async function enqueueIngestion(db: Db, input: IngestInput) {
 }
 
 /** Run the pipeline for a queued job (called by the worker). */
-export async function processJob(db: Db, ai: AiClient, converter: Converter, args: {
+export async function processJob(db: Db, ai: AiClient, converter: Converter, urlFetcher: UrlFetcher, args: {
   documentId: string; kbId: string; mimeType: string | null;
   text?: string; bytes?: Uint8Array; sourceUrl?: string | null; filename?: string | null;
 }) {
-  await runIngestion(db, ai, converter, args);
+  await runIngestion(db, ai, converter, args, urlFetcher);
 }
 
 /** Convenience for tests / synchronous flows: enqueue + process inline. */
-export async function ingestAndProcess(db: Db, ai: AiClient, converter: Converter, input: IngestInput) {
+export async function ingestAndProcess(db: Db, ai: AiClient, converter: Converter, urlFetcher: UrlFetcher, input: IngestInput) {
   const { documentId } = await enqueueIngestion(db, input);
-  await processJob(db, ai, converter, {
+  await processJob(db, ai, converter, urlFetcher, {
     documentId, kbId: input.kbId, mimeType: input.mimeType,
     text: input.rawContent, sourceUrl: input.sourceUrl, filename: input.title,
   });
@@ -43,12 +43,12 @@ export async function ingestAndProcess(db: Db, ai: AiClient, converter: Converte
 // --- Dependency-injection seam for the in-process ingest path ------------------
 // The HTTP route resolves its AI client + converter through this so tests can
 // substitute deterministic mocks without making live model calls.
-export interface IngestDeps { ai: AiClient; converter: Converter; }
+export interface IngestDeps { ai: AiClient; converter: Converter; urlFetcher: UrlFetcher; }
 let depsOverride: IngestDeps | null = null;
 
 /** Test hook: override (or reset with null) the deps used by the in-process path. */
 export function __setIngestDeps(deps: IngestDeps | null) { depsOverride = deps; }
 
 export function resolveIngestDeps(): IngestDeps {
-  return depsOverride ?? { ai: createAiClient(), converter: new MarkitdownConverter() };
+  return depsOverride ?? { ai: createAiClient(), converter: new MarkitdownConverter(), urlFetcher: fetchUrlContent };
 }

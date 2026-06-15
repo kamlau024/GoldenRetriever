@@ -19,7 +19,7 @@ beforeAll(async () => {
   await db.insert(schema.apiTokens).values({
     id: `tok_${randomUUID().slice(0, 8)}`, userId: uid, name: "t", tokenHash: hashToken(token),
   });
-  __setIngestDeps({ ai: createMockAiClient(), converter: new MockConverter() });
+  __setIngestDeps({ ai: createMockAiClient(), converter: new MockConverter(), urlFetcher: async () => ({ kind: "text" as const, mimeType: "text/plain", text: "" }) });
 });
 afterAll(async () => { __setIngestDeps(null); await sql.end(); });
 

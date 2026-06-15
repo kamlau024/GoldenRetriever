@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { createDb, schema } from "@gr/db";
 import { resolveAuth } from "../../../lib/clerk-auth.js";
 import { enqueueIngestion, processJob, resolveIngestDeps } from "../../../lib/ingest-service.js";
+import { isSafeHttpUrl } from "@gr/ingest";
 import type { CaptureMode, DocumentKind } from "@gr/core";
 
 export async function POST(req: NextRequest) {
@@ -16,6 +17,10 @@ export async function POST(req: NextRequest) {
   };
   if (!body.kbId || (!body.text && !body.html && !body.url)) {
     return NextResponse.json({ error: "kbId and one of {text, html, url} required" }, { status: 400 });
+  }
+
+  if (body.url && !isSafeHttpUrl(body.url)) {
+    return NextResponse.json({ error: "url must be a public http(s) URL" }, { status: 400 });
   }
 
   // Authorization: the caller must be an owner/editor of the target KB (prevents IDOR —
@@ -51,8 +56,8 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({ jobId, documentId }),
     });
   } else {
-    const { ai, converter } = resolveIngestDeps();
-    await processJob(db, ai, converter, {
+    const { ai, converter, urlFetcher } = resolveIngestDeps();
+    await processJob(db, ai, converter, urlFetcher, {
       documentId, kbId: body.kbId, mimeType,
       text: body.html ?? body.text ?? "", sourceUrl: body.url ?? null, filename: body.title ?? null,
     });

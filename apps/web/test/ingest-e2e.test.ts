@@ -25,7 +25,7 @@ afterAll(async () => { await sql.end(); });
 
 describe("ingest → process → retrievable", () => {
   it("ingests selection text and makes it answerable", async () => {
-    const { documentId } = await ingestAndProcess(db, ai, conv, {
+    const { documentId } = await ingestAndProcess(db, ai, conv, async () => ({ kind: "text" as const, mimeType: "text/plain", text: "" }), {
       kbId, addedBy: userId, captureMode: "selection", kind: "text",
       mimeType: "text/plain", sourceUrl: null, title: "Kyoto note",
       rawContent: "Tawaraya is a historic ryokan in central Kyoto.",
