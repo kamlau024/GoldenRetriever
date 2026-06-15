@@ -42,9 +42,12 @@ also runs the web component tests (jsdom) via the app-local vitest config.
    cat packages/db/drizzle/0000_*.sql | docker compose -f docker-compose.test.yml exec -T db psql -U gr -d gr_test
    pnpm --filter @gr/web dev
    ```
-3. Sign up, paste a paragraph (or submit a URL) on the Library page, then open Chat and ask
-   a question — you should get a streamed, grounded answer. (Live citation chips and binary
-   file upload arrive in Plan 2b; document refresh/RSS is Stage 3.)
+3. Sign up, then on the Library page paste a paragraph or **submit a URL** (the page is
+   fetched and parsed server-side; only public http(s) URLs are accepted). Use the **Search**
+   page to find passages, **Chat** to ask a question and get a streamed, grounded answer with
+   **live citation chips**, and the **Delete** button to remove a document. Binary file upload
+   (PDF/Office via Blob + the markitdown service) and deployment are Plan 2c; document
+   refresh/RSS is Stage 3.
 
 > Note: the automated test suite needs **no Clerk keys** — every route is covered through the
 > API-token auth path with injected mock AI. Clerk keys are only needed to run the UI.
