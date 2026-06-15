@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "kbId and one of {text, html, url} required" }, { status: 400 });
   }
 
-  if (body.url && !isSafeHttpUrl(body.url)) {
+  if (body.url && !(await isSafeHttpUrl(body.url))) {
     return NextResponse.json({ error: "url must be a public http(s) URL" }, { status: 400 });
   }
 
