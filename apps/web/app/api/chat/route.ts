@@ -5,6 +5,7 @@ import { createDb, schema } from "@gr/db";
 import { createConversation, appendMessage } from "@gr/db/queries";
 import { resolveAuth } from "../../../lib/clerk-auth.js";
 import { resolveChatDeps, groundedPrompt, REFUSAL } from "../../../lib/chat-service.js";
+import { encodeCitations } from "../../../lib/citations.js";
 
 export async function POST(req: NextRequest) {
   const { db } = createDb();
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
     await appendMessage(db, { conversationId: convId, role: "assistant", content: REFUSAL, citations: [] });
     return new Response(REFUSAL, {
       status: 200,
-      headers: { "content-type": "text/plain; charset=utf-8", "x-conversation-id": convId },
+      headers: { "content-type": "text/plain; charset=utf-8", "x-conversation-id": convId, "x-citations": encodeCitations([]) },
     });
   }
 
@@ -46,5 +47,5 @@ export async function POST(req: NextRequest) {
       });
     },
   });
-  return result.toTextStreamResponse({ headers: { "x-conversation-id": convId } });
+  return result.toTextStreamResponse({ headers: { "x-conversation-id": convId, "x-citations": encodeCitations(citations) } });
 }

@@ -66,6 +66,9 @@ describe("POST /api/chat", () => {
     expect(res.status).toBe(200);
     const text = await res.text();
     expect(text).toContain("Tawaraya");
+    const { parseCitations } = await import("../lib/citations.js");
+    const cites = parseCitations(res.headers.get("x-citations"));
+    expect(cites[0]?.documentId).toBe("d1");
     const convId = res.headers.get("x-conversation-id");
     expect(convId).toBeTruthy();
     const msgs = await getMessages(db, convId!);

@@ -54,6 +54,10 @@ export function Chat({ kbId }: { kbId: string }) {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ kbId, message }),
       });
+      const { parseCitations } = await import("../lib/citations.js");
+      const citations = parseCitations(res.headers.get("x-citations"))
+        .map((c) => ({ title: c.title, sourceUrl: c.sourceUrl }));
+      setMessages((m) => m.map((t) => (t.id === assistantId ? { ...t, citations } : t)));
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       let acc = "";
