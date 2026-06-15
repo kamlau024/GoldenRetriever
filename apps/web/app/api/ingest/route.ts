@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { createDb, schema } from "@gr/db";
-import { verifyApiToken } from "../../../lib/auth.js";
+import { resolveAuth } from "../../../lib/clerk-auth.js";
 import { enqueueIngestion, processJob, resolveIngestDeps } from "../../../lib/ingest-service.js";
 import type { CaptureMode, DocumentKind } from "@gr/core";
 
 export async function POST(req: NextRequest) {
   const { db } = createDb();
-  const auth = await verifyApiToken(db, req.headers.get("authorization")?.replace(/^Bearer /, ""));
-  if (!auth) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const principal = await resolveAuth(db, req);
+  if (!principal) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = await req.json() as {
     kbId: string; url?: string; title?: string; text?: string; html?: string;
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   // Authorization: the caller must be an owner/editor of the target KB (prevents IDOR —
   // writing into a knowledge base they don't belong to).
   const membership = await db.select().from(schema.kbMembers)
-    .where(and(eq(schema.kbMembers.kbId, body.kbId), eq(schema.kbMembers.userId, auth.userId)));
+    .where(and(eq(schema.kbMembers.kbId, body.kbId), eq(schema.kbMembers.userId, principal.userId)));
   const role = membership[0]?.role;
   if (role !== "owner" && role !== "editor") {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   const mimeType: string | null = body.html ? "text/html" : body.text ? "text/plain" : null;
 
   const { documentId, jobId } = await enqueueIngestion(db, {
-    kbId: body.kbId, addedBy: auth.userId, captureMode, kind, mimeType,
+    kbId: body.kbId, addedBy: principal.userId, captureMode, kind, mimeType,
     sourceUrl: body.url ?? null, title: body.title ?? null,
     rawContent: body.html ?? body.text ?? "",
   });
