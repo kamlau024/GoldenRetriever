@@ -97,3 +97,10 @@ export async function getMessages(db: Db, conversationId: string) {
   return db.select().from(messages)
     .where(eq(messages.conversationId, conversationId)).orderBy(messages.createdAt);
 }
+
+export async function deleteDocument(db: Db, docId: string, kbId: string): Promise<boolean> {
+  const rows = await db.delete(documents)
+    .where(and(eq(documents.id, docId), eq(documents.kbId, kbId)))
+    .returning({ id: documents.id });
+  return rows.length > 0;
+}
