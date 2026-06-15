@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, desc } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/postgres-js";
-import { users, knowledgeBases, kbMembers, documents, chunks } from "./schema.js";
+import { users, knowledgeBases, kbMembers, documents, chunks, conversations, messages } from "./schema.js";
 import type { NewChunk } from "./schema.js";
 
 type Db = ReturnType<typeof drizzle>;
@@ -73,4 +73,27 @@ export async function listDocuments(db: Db, kbId: string, limit = 100) {
     id: documents.id, title: documents.title, sourceUrl: documents.sourceUrl,
     kind: documents.kind, status: documents.status, capturedAt: documents.capturedAt,
   }).from(documents).where(eq(documents.kbId, kbId)).orderBy(desc(documents.createdAt)).limit(limit);
+}
+
+export async function createConversation(db: Db, c: { kbId: string; userId: string; title?: string }) {
+  const convId = id("conv");
+  await db.insert(conversations).values({ id: convId, kbId: c.kbId, userId: c.userId, title: c.title });
+  return convId;
+}
+
+export async function appendMessage(db: Db, m: {
+  conversationId: string; role: "user" | "assistant"; content: string;
+  citations?: unknown; tokens?: number;
+}) {
+  const msgId = id("msg");
+  await db.insert(messages).values({
+    id: msgId, conversationId: m.conversationId, role: m.role, content: m.content,
+    citations: m.citations ?? null, tokens: m.tokens ?? null,
+  });
+  return msgId;
+}
+
+export async function getMessages(db: Db, conversationId: string) {
+  return db.select().from(messages)
+    .where(eq(messages.conversationId, conversationId)).orderBy(messages.createdAt);
 }
