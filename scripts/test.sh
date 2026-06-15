@@ -46,8 +46,15 @@ else
   echo "  schema present — skipping"
 fi
 
-echo "▶ Running Vitest suite…"
+echo "▶ Running Vitest suite (node)…"
 pnpm vitest run "$@"
+
+# Web component tests (jsdom) live under the app-local vitest config. Run them only
+# on a full sweep (no path args), so scoped node runs stay fast.
+if [ "$#" -eq 0 ]; then
+  echo "▶ Running web component tests (jsdom)…"
+  pnpm --filter @gr/web exec vitest run
+fi
 
 # --- Python (markitdown) tests -------------------------------------------------
 # Uncomment when services/convert/test_convert.py exists (testing plan Part A4):

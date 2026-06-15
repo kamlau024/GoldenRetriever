@@ -1,6 +1,9 @@
-# GoldenRetriever — Stage 0 Backend Core
+# GoldenRetriever
 
-Clip → ingest → ask, for a single user's personal knowledge base. This is **Plan 1 of 3** (backend core); the web UI and capture clients (extension, iOS Shortcut) follow in Plans 2 and 3.
+Clip → ingest → ask, for a single user's personal knowledge base. Stage 0 backend core
+(Plan 1) plus the web app's thin usable slice (Plan 2a): Clerk auth, library, add-content,
+and streaming grounded chat with citations. Capture clients (extension, iOS Shortcut) are
+Plan 3.
 
 ## Develop
 
@@ -21,7 +24,30 @@ pnpm test -t "IDOR"               # by test name
 ```
 
 `pnpm test:raw` runs vitest only (no DB setup) — for CI where the database is
-provisioned separately. `pnpm db:down` tears down the test database.
+provisioned separately. `pnpm db:down` tears down the test database. A full `pnpm test`
+also runs the web component tests (jsdom) via the app-local vitest config.
+
+## Run the web app (local)
+
+1. Create a free Clerk dev instance and put the keys in `apps/web/.env.local`:
+   ```bash
+   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+   CLERK_SECRET_KEY=sk_test_...
+   DATABASE_URL=postgres://gr:gr@localhost:5433/gr_test
+   AI_GATEWAY_API_KEY=...   # a Vercel AI Gateway key (real, for live embeddings/generation)
+   ```
+2. Start the database and dev server:
+   ```bash
+   pnpm db:up
+   cat packages/db/drizzle/0000_*.sql | docker compose -f docker-compose.test.yml exec -T db psql -U gr -d gr_test
+   pnpm --filter @gr/web dev
+   ```
+3. Sign up, paste a paragraph (or submit a URL) on the Library page, then open Chat and ask
+   a question — you should get a streamed, grounded answer. (Live citation chips and binary
+   file upload arrive in Plan 2b; document refresh/RSS is Stage 3.)
+
+> Note: the automated test suite needs **no Clerk keys** — every route is covered through the
+> API-token auth path with injected mock AI. Clerk keys are only needed to run the UI.
 
 ## Packages
 
@@ -31,13 +57,15 @@ provisioned separately. `pnpm db:down` tears down the test database.
 - `@gr/ingest` — format router + Readability extraction + chunker + ingestion pipeline
 - `@gr/ai` — model config + `AiClient` (embed / tag / answer / rerank) via AI Gateway, with a deterministic mock
 - `@gr/retrieval` — `Retriever` interface + `HybridRetriever` (pgvector + FTS + RRF + rerank)
-- `@gr/web` — Next.js ingest API + worker (Plan 2 adds UI, Clerk, chat)
+- `@gr/web` — Next.js app: ingest/worker/chat APIs + Clerk auth, library, add-content, and chat UI (Plan 2a)
 
 ## Services
 
 - `services/convert` — **markitdown** Python function (Vercel Fluid Compute) converting PDF/Office/image documents to markdown. Deployed separately; the worker calls it via `MARKITDOWN_URL`.
 
-## Architecture & plan
+## Architecture & plans
 
 - Design spec: `docs/superpowers/specs/2026-06-14-goldenretriever-architecture-design.md`
-- Implementation plan: `docs/superpowers/plans/2026-06-14-goldenretriever-stage0-backend-core.md`
+- Plan 1 — backend core: `docs/superpowers/plans/2026-06-14-goldenretriever-stage0-backend-core.md`
+- Plan 2a — web app (thin slice): `docs/superpowers/plans/2026-06-14-goldenretriever-plan2a-web-app.md`
+- Testing plan: `docs/superpowers/plans/2026-06-14-goldenretriever-testing-plan.md`
