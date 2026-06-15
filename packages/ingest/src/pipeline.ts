@@ -6,6 +6,7 @@ import { insertChunks, setDocumentReady, setDocumentFailed } from "@gr/db/querie
 import { convertToMarkdown } from "./router.js";
 import type { Converter } from "./converter.js";
 import { chunkText } from "./chunk.js";
+import { fetchUrlContent, type UrlFetcher } from "./fetch-url.js";
 
 type Db = ReturnType<typeof drizzle>;
 
@@ -21,14 +22,25 @@ export interface IngestionWork {
   filename?: string | null;
 }
 
-export async function runIngestion(db: Db, ai: AiClient, converter: Converter, work: IngestionWork): Promise<void> {
+export async function runIngestion(
+  db: Db, ai: AiClient, converter: Converter, work: IngestionWork,
+  urlFetcher: UrlFetcher = fetchUrlContent,
+): Promise<void> {
   try {
     await db.update(schema.documents).set({ status: "processing" })
       .where(eq(schema.documents.id, work.documentId));
 
+    let { text, bytes, mimeType } = work;
+    if (text === undefined && bytes === undefined && work.sourceUrl) {
+      const fetched = await urlFetcher(work.sourceUrl);
+      mimeType = fetched.mimeType;
+      if (fetched.kind === "text") text = fetched.text;
+      else throw new Error("binary URL content is not supported yet (Plan 2c)");
+    }
+
     // Route by format: HTML → Readability, text → passthrough, binary → markitdown.
     const extracted = await convertToMarkdown({
-      mimeType: work.mimeType, text: work.text, bytes: work.bytes,
+      mimeType, text, bytes,
       sourceUrl: work.sourceUrl, filename: work.filename,
     }, converter);
 

@@ -60,4 +60,19 @@ describe("runIngestion", () => {
     const doc = await getDocument(db, docId, kbId);
     expect(doc?.status).toBe("failed");
   });
+
+  it("fetches and parses an html URL when no inline content is provided", async () => {
+    const docId = await insertDocument(db, {
+      kbId, addedBy: userId, kind: "web", captureMode: "url_fetch",
+      sourceUrl: "https://ok.dev/post", title: null, mimeType: null,
+    });
+    const fakeFetcher = async () => ({ kind: "text" as const, mimeType: "text/html",
+      text: "<html><head><title>Post</title></head><body><article><p>Kyoto ryokan guide.</p></article></body></html>" });
+    await runIngestion(db, ai, conv, {
+      documentId: docId, kbId, mimeType: null, sourceUrl: "https://ok.dev/post",
+    }, fakeFetcher);
+    const doc = await getDocument(db, docId, kbId);
+    expect(doc?.status).toBe("ready");
+    expect(doc?.title).toBe("Post");
+  });
 });
