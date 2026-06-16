@@ -5,6 +5,7 @@ import { createDb, schema } from "@gr/db";
 import { createAiClient } from "@gr/ai";
 import { MarkitdownConverter, fetchUrlContent } from "@gr/ingest";
 import { processJob } from "../../../lib/ingest-service.js";
+import { resolveBlobStore } from "../../../lib/blob.js";
 
 function secretOk(provided: string, expected: string): boolean {
   const a = Buffer.from(provided);
@@ -27,11 +28,13 @@ export async function POST(req: NextRequest) {
   const doc = docRows[0];
   if (!doc) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  // Interim: text payload comes from metadata; Plan 2 reads bytes from Blob for binary kinds.
+  // Binary documents (uploads) read their bytes back from the blob store; text/HTML/URL
+  // documents use the inline text payload stashed in metadata.
   const text = (doc.metadata as { rawContent?: string } | null)?.rawContent ?? "";
+  const bytes = doc.blobKey ? await resolveBlobStore().get(doc.blobKey) : undefined;
   await processJob(db, createAiClient(), new MarkitdownConverter(), fetchUrlContent, {
     documentId, kbId: doc.kbId, mimeType: doc.mimeType,
-    text, sourceUrl: doc.sourceUrl, filename: doc.title,
+    text: bytes ? undefined : text, bytes, sourceUrl: doc.sourceUrl, filename: doc.title,
   });
   return NextResponse.json({ ok: true });
 }
