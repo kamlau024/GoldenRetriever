@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, type ChangeEvent } from "react";
 
 export function AddContent({ kbId }: { kbId: string }) {
   const [text, setText] = useState("");
@@ -17,6 +17,18 @@ export function AddContent({ kbId }: { kbId: string }) {
     location.reload();
   }
 
+  async function uploadFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    const fd = new FormData();
+    fd.set("kbId", kbId);
+    fd.set("file", file);
+    await fetch("/api/upload", { method: "POST", body: fd });
+    setBusy(false);
+    location.reload();
+  }
+
   return (
     <div className="space-y-3 rounded-lg border border-neutral-200 p-4">
       <textarea className="w-full rounded border p-2" rows={3} placeholder="Paste text to save…"
@@ -30,6 +42,11 @@ export function AddContent({ kbId }: { kbId: string }) {
           value={url} onChange={(e) => setUrl(e.target.value)} />
         <button disabled={busy || !url.trim()} onClick={() => submit({ url })}
           className="rounded border px-3 py-1.5 disabled:opacity-50">Save URL</button>
+      </div>
+      <div className="flex items-center gap-2">
+        <label className="text-sm text-neutral-600">Upload a PDF/doc/image:</label>
+        <input type="file" disabled={busy} onChange={uploadFile}
+          accept=".pdf,.docx,.pptx,.xlsx,.png,.jpg,.jpeg" />
       </div>
     </div>
   );
