@@ -8,6 +8,8 @@ import { resolveAuth } from "../../../lib/clerk-auth.js";
 import { resolveBlobStore } from "../../../lib/blob.js";
 import { resolveIngestDeps, processJob } from "../../../lib/ingest-service.js";
 
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
+
 function kindForMime(mime: string): DocumentKind {
   if (mime === "application/pdf") return "pdf";
   if (mime.startsWith("image/")) return "image";
@@ -24,6 +26,9 @@ export async function POST(req: NextRequest) {
   const file = form.get("file");
   if (typeof kbId !== "string" || !(file instanceof File)) {
     return NextResponse.json({ error: "kbId and file required" }, { status: 400 });
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return NextResponse.json({ error: "file too large (max 25 MB)" }, { status: 413 });
   }
 
   const member = await db.select().from(schema.kbMembers)

@@ -38,6 +38,10 @@ describe("POST /api/upload", () => {
   it("401 without auth", async () => { expect((await upload(kbId, pdf(), false)).status).toBe(401); });
   it("400 without a file", async () => { expect((await upload(kbId, null)).status).toBe(400); });
   it("403 for a kb the caller is not a member of", async () => { expect((await upload("kb_other", pdf())).status).toBe(403); });
+  it("413 for a file over the 25 MB cap", async () => {
+    const big = new File([new Uint8Array(26 * 1024 * 1024)], "big.pdf", { type: "application/pdf" });
+    expect((await upload(kbId, big)).status).toBe(413);
+  });
   it("stores the file and ingests it to ready", async () => {
     delete process.env.APP_URL;
     const res = await upload(kbId, pdf());
