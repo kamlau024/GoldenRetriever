@@ -24,12 +24,14 @@ export async function insertDocument(db: Db, d: {
   kbId: string; addedBy: string; kind: string; captureMode: string;
   sourceUrl: string | null; title: string | null;
   mimeType?: string | null; metadata?: Record<string, unknown> | null;
+  blobKey?: string | null;
 }) {
   const docId = id("doc");
   await db.insert(documents).values({
     id: docId, kbId: d.kbId, addedBy: d.addedBy, kind: d.kind,
     captureMode: d.captureMode, sourceUrl: d.sourceUrl, title: d.title,
-    mimeType: d.mimeType ?? null, metadata: d.metadata ?? null, status: "pending",
+    mimeType: d.mimeType ?? null, metadata: d.metadata ?? null,
+    blobKey: d.blobKey ?? null, status: "pending",
   });
   return docId;
 }
