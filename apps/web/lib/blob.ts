@@ -22,19 +22,24 @@ export class InMemoryBlobStore implements BlobStore {
   async del(ref: string): Promise<void> { this.map.delete(ref); }
 }
 
-/** Vercel Blob impl (prod). The returned URL is the ref. Requires BLOB_READ_WRITE_TOKEN. */
+/**
+ * Vercel Blob impl (prod). Uses PRIVATE access so a tenant's uploaded documents are NOT
+ * world-readable — the ref is the store pathname (never a public URL), and reads go through
+ * the authenticated SDK (not a plain fetch). Requires BLOB_READ_WRITE_TOKEN.
+ */
 export class VercelBlobStore implements BlobStore {
   async put(bytes: Uint8Array, contentType: string): Promise<string> {
     const { put } = await import("@vercel/blob");
-    const { url } = await put(`uploads/${randomUUID()}`, Buffer.from(bytes), {
-      access: "public", contentType, addRandomSuffix: false,
+    const { pathname } = await put(`uploads/${randomUUID()}`, Buffer.from(bytes), {
+      access: "private", contentType, addRandomSuffix: false,
     });
-    return url;
+    return pathname;
   }
   async get(ref: string): Promise<Uint8Array> {
-    const res = await fetch(ref);
-    if (!res.ok) throw new Error(`blob fetch failed ${res.status}: ${ref}`);
-    return new Uint8Array(await res.arrayBuffer());
+    const { get } = await import("@vercel/blob");
+    const result = await get(ref, { access: "private" });
+    if (!result || !result.stream) throw new Error(`blob not found: ${ref}`);
+    return new Uint8Array(await new Response(result.stream).arrayBuffer());
   }
   async del(ref: string): Promise<void> {
     const { del } = await import("@vercel/blob");
