@@ -75,4 +75,19 @@ describe("runIngestion", () => {
     expect(doc?.status).toBe("ready");
     expect(doc?.title).toBe("Post");
   });
+
+  it("fetches the URL when inline text is an empty string (the web form/route sends text='')", async () => {
+    const docId = await insertDocument(db, {
+      kbId, addedBy: userId, kind: "web", captureMode: "url_fetch",
+      sourceUrl: "https://ok.dev/empty", title: null, mimeType: null,
+    });
+    const fakeFetcher = async () => ({ kind: "text" as const, mimeType: "text/html",
+      text: "<html><head><title>Fetched</title></head><body><article><p>Kyoto ryokan via fetch.</p></article></body></html>" });
+    await runIngestion(db, ai, conv, {
+      documentId: docId, kbId, mimeType: null, text: "", sourceUrl: "https://ok.dev/empty",
+    }, fakeFetcher);
+    const doc = await getDocument(db, docId, kbId);
+    expect(doc?.status).toBe("ready");
+    expect(doc?.title).toBe("Fetched");
+  });
 });

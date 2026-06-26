@@ -31,7 +31,9 @@ export async function runIngestion(
       .where(eq(schema.documents.id, work.documentId));
 
     let { text, bytes, mimeType } = work;
-    if (text === undefined && bytes === undefined && work.sourceUrl) {
+    // A URL ingest arrives with no inline content. The web form/route sends text:"" (an
+    // empty string), not undefined — so guard on falsy text, else the URL is never fetched.
+    if (!text && bytes === undefined && work.sourceUrl) {
       const fetched = await urlFetcher(work.sourceUrl);
       mimeType = fetched.mimeType;
       if (fetched.kind === "text") text = fetched.text;
