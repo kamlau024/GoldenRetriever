@@ -9,12 +9,19 @@ export function Results({ results, searched }: { results: SearchResult[]; search
   if (results.length === 0) return <p className="text-neutral-500">No matches.</p>;
   return (
     <ul className="space-y-3">
-      {results.map((r) => (
-        <li key={r.chunkId} className="rounded border border-neutral-200 p-3">
-          <a href={safeHref(r.sourceUrl)} target="_blank" rel="noopener noreferrer" className="text-sm font-medium">{r.title ?? r.sourceUrl ?? "Untitled"}</a>
-          <p className="mt-1 text-sm text-neutral-600">{r.content.slice(0, 240)}</p>
-        </li>
-      ))}
+      {results.map((r) => {
+        const href = safeHref(r.sourceUrl);
+        return (
+          <li key={r.chunkId} className="rounded border border-neutral-200 p-3">
+            {href === "#" ? (
+              <span className="text-sm font-medium">{r.title ?? "Untitled"}</span>
+            ) : (
+              <a href={href} target="_blank" rel="noopener noreferrer" className="text-sm font-medium underline">{r.title ?? r.sourceUrl}</a>
+            )}
+            <p className="mt-1 text-sm text-neutral-600">{r.content.slice(0, 240)}</p>
+          </li>
+        );
+      })}
     </ul>
   );
 }

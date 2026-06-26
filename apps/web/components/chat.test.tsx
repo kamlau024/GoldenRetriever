@@ -14,11 +14,14 @@ describe("Transcript", () => {
     expect(link.getAttribute("href")).toBe("https://x");
   });
 
-  it("neutralizes a javascript: citation URL (XSS guard)", () => {
+  it("renders a non-link chip (no anchor) for a javascript: or absent source URL", () => {
     render(<Transcript messages={[
       { id: "1", role: "assistant", content: "evil", citations: [{ title: "x", sourceUrl: "javascript:alert(1)" }] },
+      { id: "2", role: "assistant", content: "note", citations: [{ title: "plain", sourceUrl: null }] },
     ]} />);
-    expect((screen.getByText("x") as HTMLAnchorElement).getAttribute("href")).toBe("#");
+    // No clickable anchor is produced for unsafe/absent URLs (XSS guard + no dead link).
+    expect(screen.getByText("x").closest("a")).toBeNull();
+    expect(screen.getByText("plain").closest("a")).toBeNull();
   });
 });
 

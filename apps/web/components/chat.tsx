@@ -24,9 +24,19 @@ export function Transcript({ messages }: { messages: Turn[] }) {
           <p className="inline-block rounded-lg bg-neutral-100 px-3 py-2">{m.content}</p>
           {m.citations?.length ? (
             <div className="mt-1 flex flex-wrap gap-1">
-              {m.citations.map((c, i) => (
-                <a key={i} href={safeHref(c.sourceUrl)} target="_blank" rel="noopener noreferrer" className="rounded bg-amber-100 px-2 py-0.5 text-xs">{c.title ?? "source"}</a>
-              ))}
+              {m.citations.map((c, i) => {
+                const href = safeHref(c.sourceUrl);
+                const label = c.title ?? "source";
+                // Pasted text / uploads have no external URL → show a non-clickable chip
+                // instead of a dead link that opens a blank tab.
+                return href === "#" ? (
+                  <span key={i} title="Saved text — no external source"
+                    className="rounded bg-amber-100 px-2 py-0.5 text-xs text-neutral-700">{label}</span>
+                ) : (
+                  <a key={i} href={href} target="_blank" rel="noopener noreferrer"
+                    className="rounded bg-amber-100 px-2 py-0.5 text-xs underline">{c.title ?? c.sourceUrl}</a>
+                );
+              })}
             </div>
           ) : null}
         </div>
