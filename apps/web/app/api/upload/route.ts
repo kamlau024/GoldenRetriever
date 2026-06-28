@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { createDb, schema } from "@gr/db";
-import { insertDocument } from "@gr/db/queries";
+import { insertDocument, getOrCreatePersonalKb } from "@gr/db/queries";
 import type { DocumentKind } from "@gr/core";
 import { resolveAuth } from "../../../lib/clerk-auth.js";
 import { resolveBlobStore } from "../../../lib/blob.js";
@@ -22,11 +22,14 @@ export async function POST(req: NextRequest) {
   if (!principal) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const form = await req.formData();
-  const kbId = form.get("kbId");
+  const kbIdRaw = form.get("kbId");
   const file = form.get("file");
-  if (typeof kbId !== "string" || !(file instanceof File)) {
-    return NextResponse.json({ error: "kbId and file required" }, { status: 400 });
+  if (!(file instanceof File)) {
+    return NextResponse.json({ error: "file required" }, { status: 400 });
   }
+  const kbId = typeof kbIdRaw === "string" && kbIdRaw
+    ? kbIdRaw
+    : await getOrCreatePersonalKb(db, principal.userId);
   if (file.size > MAX_UPLOAD_BYTES) {
     return NextResponse.json({ error: "file too large (max 25 MB)" }, { status: 413 });
   }

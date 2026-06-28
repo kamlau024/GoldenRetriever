@@ -33,8 +33,8 @@ describe("POST /api/ingest auth & authz", () => {
   it("401 without a token", async () => {
     expect((await post({ kbId, text: "hi" })).status).toBe(401);
   });
-  it("400 when kbId or content missing", async () => {
-    expect((await post({ kbId }, token)).status).toBe(400);
+  it("400 when content is missing", async () => {
+    expect((await post({}, token)).status).toBe(400);
   });
   it("403 when caller is not a member of the target kb (IDOR)", async () => {
     expect((await post({ kbId: otherKbId, text: "hi" }, token)).status).toBe(403);
