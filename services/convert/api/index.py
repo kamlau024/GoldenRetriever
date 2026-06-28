@@ -18,6 +18,11 @@ _EXT = {
 
 
 class handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        # Liveness probe only — no secret required and returns no data. The real work is
+        # POST /api/index (secret-protected). Without this, a browser GET returns a 501.
+        return self._send(200, {"status": "ok", "service": "convert"})
+
     def do_POST(self):
         # Fail closed: a missing secret is a misconfiguration, not an open door.
         secret = os.environ.get("MARKITDOWN_SECRET")
