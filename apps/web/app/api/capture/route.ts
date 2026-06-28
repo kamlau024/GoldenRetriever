@@ -37,8 +37,17 @@ export async function POST(req: NextRequest) {
   const principal = await resolveAuth(db, req);
   if (!principal) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const form = await req.formData();
-  const content = form.get("content");
+  // Accept a JSON body { content } (simplest request for the Shortcut — no multipart) OR a
+  // multipart form field `content` (needed to carry a real file/image).
+  const contentType = req.headers.get("content-type") ?? "";
+  let content: FormDataEntryValue | null;
+  if (contentType.includes("application/json")) {
+    const body = (await req.json().catch(() => null)) as { content?: unknown } | null;
+    content = typeof body?.content === "string" ? body.content : null;
+  } else {
+    const form = await req.formData().catch(() => null);
+    content = form?.get("content") ?? null;
+  }
   const kbId = await getOrCreatePersonalKb(db, principal.userId);
   const deps = resolveIngestDeps();
 

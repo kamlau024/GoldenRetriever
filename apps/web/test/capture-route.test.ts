@@ -66,6 +66,20 @@ describe("POST /api/capture (single endpoint, type auto-detected)", () => {
     expect((await listDocuments(db, kbId)).some((d) => d.kind === "text" && d.status === "ready")).toBe(true);
   });
 
+  it("accepts a JSON body { content } (no multipart) and routes it", async () => {
+    delete process.env.APP_URL;
+    const res = await POST(new NextRequest("http://localhost/api/capture", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ content: "https://ok.dev/json-post" }),
+    }));
+    expect(res.status).toBe(202);
+    const kbId = await getOrCreatePersonalKb(db, "u_cap");
+    const doc = (await listDocuments(db, kbId)).find((d) => d.sourceUrl === "https://ok.dev/json-post");
+    expect(doc?.kind).toBe("web");
+    expect(doc?.status).toBe("ready");
+  });
+
   it("routes a text File whose content is a bare URL → fetched as a web page", async () => {
     delete process.env.APP_URL;
     const f = new File(["https://ok.dev/from-file"], "shared.txt", { type: "text/plain" });
