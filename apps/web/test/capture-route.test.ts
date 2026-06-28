@@ -65,7 +65,18 @@ describe("POST /api/capture (single endpoint, type auto-detected)", () => {
     expect((await listDocuments(db, kbId)).some((d) => d.kind === "text" && d.status === "ready")).toBe(true);
   });
 
-  it("routes a File → stored in blob + converted", async () => {
+  it("routes a text File whose content is a bare URL → fetched as a web page", async () => {
+    delete process.env.APP_URL;
+    const f = new File(["https://ok.dev/from-file"], "shared.txt", { type: "text/plain" });
+    const res = await capture(f);
+    expect(res.status).toBe(202);
+    const kbId = await getOrCreatePersonalKb(db, "u_cap");
+    const doc = (await listDocuments(db, kbId)).find((d) => d.sourceUrl === "https://ok.dev/from-file");
+    expect(doc?.kind).toBe("web");
+    expect(doc?.status).toBe("ready");
+  });
+
+  it("routes a binary File → stored in blob + converted", async () => {
     delete process.env.APP_URL;
     const pdf = new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], "report.pdf", { type: "application/pdf" });
     const res = await capture(pdf);
