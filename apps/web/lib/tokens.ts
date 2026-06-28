@@ -23,7 +23,13 @@ export async function createApiToken(db: Db, userId: string, name: string): Prom
 }
 
 export async function listApiTokens(db: Db, userId: string): Promise<TokenSummary[]> {
-  const rows = await db.select().from(schema.apiTokens)
+  const rows = await db.select({
+    id: schema.apiTokens.id,
+    name: schema.apiTokens.name,
+    createdAt: schema.apiTokens.createdAt,
+    lastUsedAt: schema.apiTokens.lastUsedAt,
+    revokedAt: schema.apiTokens.revokedAt,
+  }).from(schema.apiTokens)
     .where(eq(schema.apiTokens.userId, userId))
     .orderBy(desc(schema.apiTokens.createdAt));
   return rows.map((r) => ({

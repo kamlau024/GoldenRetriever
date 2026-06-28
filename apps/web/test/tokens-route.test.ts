@@ -42,6 +42,11 @@ describe("POST/GET /api/tokens", () => {
     expect((await POST(jsonReq({ name: "  " }))).status).toBe(400);
   });
 
+  it("400 on a name longer than 64 chars", async () => {
+    __setSessionUser("u_tr");
+    expect((await POST(jsonReq({ name: "a".repeat(65) }))).status).toBe(400);
+  });
+
   it("creates a token (201) and lists it (200)", async () => {
     __setSessionUser("u_tr");
     const created = await POST(jsonReq({ name: "iPhone" }));

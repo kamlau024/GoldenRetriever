@@ -23,7 +23,7 @@ describe("token query layer", () => {
   });
 
   it("listApiTokens returns summaries without the secret/hash and reflects revocation", async () => {
-    const { id } = await createApiToken(db, uid, "laptop");
+    const { id, token } = await createApiToken(db, uid, "laptop");
     let list = await listApiTokens(db, uid);
     const found = list.find((t) => t.id === id)!;
     expect(found.name).toBe("laptop");
@@ -33,6 +33,7 @@ describe("token query layer", () => {
     list = await listApiTokens(db, uid);
     expect(list.find((t) => t.id === id)!.revoked).toBe(true);
     // a revoked token no longer authenticates
+    expect(await verifyApiToken(db, token)).toBeNull();
   });
 
   it("revokeApiToken returns false for a token the user does not own (IDOR-safe)", async () => {
