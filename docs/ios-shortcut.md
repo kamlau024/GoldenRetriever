@@ -24,19 +24,32 @@ Open the **Shortcuts** app → **+** → and add these actions:
    > To insert `Token` or `BaseURL` into a field later, tap the field, then tap **Select
    > Variable** (or the variables strip above the keyboard) and pick it — don't type the name.
 
-4. **If** *Shortcut Input* **has any value** and is a **URL**:
+   The **If** action only tests *values* (has any value / is / contains), not types — there
+   is no "is a URL" condition. So detect the type with a dedicated action first, then test
+   *its* result.
+
+4. **Get URLs from Input** → pass it *Shortcut Input*. (Call its result `Links`.) This pulls
+   any web link out of the shared item; it's empty for plain text or a file.
+5. **If** `Links` **has any value** — a shared web page or link:
    - **Get Contents of URL**
      - URL: `BaseURL` + `/api/ingest`
      - Method: **POST**
      - Headers: `Authorization` = `Bearer ` + `Token`
-     - Request Body: **JSON** → `{ "url": <Shortcut Input> }`
-5. **Otherwise If** the input is **Text**:
-   - **Get Contents of URL** → `BaseURL/api/ingest`, POST, same `Authorization` header,
-     JSON body `{ "text": <Shortcut Input> }`.
-6. **Otherwise** (a file/image/PDF):
-   - **Get Contents of URL** → `BaseURL/api/upload`, POST, same `Authorization` header,
-     Request Body: **Form** → add field **file** = *Shortcut Input* (the shared file).
+     - Request Body: **JSON** → `{ "url": Links }`
+6. **Otherwise:**
+   - **Get Text from Input** → pass *Shortcut Input* (call it `SharedText`).
+   - **If** `SharedText` **has any value** — selected text:
+     - **Get Contents of URL** → `BaseURL/api/ingest`, POST, same `Authorization` header,
+       JSON body `{ "text": SharedText }`.
+   - **Otherwise** — a file, image, or PDF:
+     - **Get Contents of URL** → `BaseURL/api/upload`, POST, same `Authorization` header,
+       Request Body: **Form** → add field **file** = *Shortcut Input*.
 7. **Show Notification**: "Saved to GoldenRetriever ✓".
+
+> Routing by type in Shortcuts is finicky. A PDF with selectable text may be caught by
+> *Get Text from Input* and ingested as text rather than uploaded through the converter —
+> usually fine, but if you want PDFs to always go through file-upload, share them from the
+> **Files** app instead of a PDF viewer.
 
 ## Use it
 
