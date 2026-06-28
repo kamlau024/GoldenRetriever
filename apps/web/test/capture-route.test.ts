@@ -8,7 +8,7 @@ import { MockConverter } from "@gr/ingest";
 import { hashToken } from "../lib/auth.js";
 import { __setIngestDeps } from "../lib/ingest-service.js";
 import { InMemoryBlobStore, __setBlobStore } from "../lib/blob.js";
-import { POST } from "../app/api/capture/route.js";
+import { POST, GET } from "../app/api/capture/route.js";
 
 const URL = process.env.DATABASE_URL ?? "postgres://gr:gr@localhost:5433/gr_test";
 const { db, sql } = createDb(URL);
@@ -64,6 +64,28 @@ describe("POST /api/capture (single endpoint, type auto-detected)", () => {
     expect(res.status).toBe(202);
     const kbId = await getOrCreatePersonalKb(db, "u_cap");
     expect((await listDocuments(db, kbId)).some((d) => d.kind === "text" && d.status === "ready")).toBe(true);
+  });
+
+  it("GET without content is a no-auth liveness probe (200 ok)", async () => {
+    const res = await GET(new NextRequest("http://localhost/api/capture"));
+    expect(res.status).toBe(200);
+    expect((await res.json()).ok).toBe(true);
+  });
+
+  it("GET ?token&content captures via query string (for iOS that can't POST)", async () => {
+    delete process.env.APP_URL;
+    const url = `http://localhost/api/capture?token=${token}&content=${encodeURIComponent("https://ok.dev/get-cap")}`;
+    const res = await GET(new NextRequest(url));
+    expect(res.status).toBe(202);
+    const kbId = await getOrCreatePersonalKb(db, "u_cap");
+    const doc = (await listDocuments(db, kbId)).find((d) => d.sourceUrl === "https://ok.dev/get-cap");
+    expect(doc?.kind).toBe("web");
+    expect(doc?.status).toBe("ready");
+  });
+
+  it("GET with content but a bad token → 401", async () => {
+    const res = await GET(new NextRequest("http://localhost/api/capture?token=grt_nope&content=hello"));
+    expect(res.status).toBe(401);
   });
 
   it("accepts a JSON body { content } (no multipart) and routes it", async () => {

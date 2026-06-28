@@ -4,6 +4,7 @@ import { createDb, schema } from "@gr/db";
 import { insertDocument, getOrCreatePersonalKb } from "@gr/db/queries";
 import type { DocumentKind, IngestInput } from "@gr/core";
 import { resolveAuth } from "../../../lib/clerk-auth.js";
+import { verifyApiToken } from "../../../lib/auth.js";
 import { resolveBlobStore } from "../../../lib/blob.js";
 import { resolveIngestDeps, enqueueIngestion, processJob } from "../../../lib/ingest-service.js";
 
@@ -17,9 +18,9 @@ function kindForMime(mime: string): DocumentKind {
 
 /**
  * Reply 202 immediately and finish ingestion AFTER the response. The iOS Share Sheet drops the
- * connection ("network connection was lost") if a request runs long, so the heavy work (fetch /
- * convert / embed) must not block the reply. On Vercel it runs via `after()`; locally and in
- * tests (no serverless request scope) it runs inline so the result is observable synchronously.
+ * connection if a request runs long, so the heavy work (fetch / convert / embed) must not block
+ * the reply. On Vercel it runs via `after()`; locally/in tests it runs inline so results are
+ * observable synchronously.
  */
 async function accept(documentId: string, work: () => Promise<void>) {
   if (process.env.VERCEL) after(work);
@@ -27,26 +28,53 @@ async function accept(documentId: string, work: () => Promise<void>) {
   return NextResponse.json({ documentId, status: "pending" }, { status: 202 });
 }
 
-/**
- * Liveness / connectivity probe (no auth). Lets the iOS Shortcut confirm it can reach the server
- * at all with a plain GET, independent of the authenticated POST path.
- */
-export async function GET() {
-  return NextResponse.json({ ok: true, service: "capture" });
+/** Route a captured string — a bare http(s) link is fetched as a page, anything else is a note. */
+async function captureString(db: ReturnType<typeof createDb>["db"], userId: string, s: string) {
+  const kbId = await getOrCreatePersonalKb(db, userId);
+  const deps = resolveIngestDeps();
+  const isUrl = /^https?:\/\/\S+$/i.test(s);
+  const input: IngestInput = isUrl
+    ? { kbId, addedBy: userId, captureMode: "url_fetch", kind: "web",
+        mimeType: null, sourceUrl: s, title: null, rawContent: "" }
+    : { kbId, addedBy: userId, captureMode: "selection", kind: "text",
+        mimeType: "text/plain", sourceUrl: null, title: null, rawContent: s };
+  const { documentId } = await enqueueIngestion(db, input);
+  return accept(documentId, () => processJob(db, deps.ai, deps.converter, deps.urlFetcher, {
+    documentId, kbId, mimeType: input.mimeType, text: input.rawContent,
+    sourceUrl: input.sourceUrl, filename: input.title,
+  }));
 }
 
 /**
- * One-shot capture endpoint for the iOS Shortcut: accepts a single `content` form field — a
- * file, a bare http(s) URL, or plain text — and routes it server-side so the Shortcut needs no
- * type detection. Always targets the caller's personal library.
+ * GET serves two purposes:
+ *  - no `content` param → a no-auth liveness probe (lets a Shortcut confirm reachability).
+ *  - `?token=…&content=…` → capture via GET. iOS URLSession can fail to upload a POST body over
+ *    HTTP/2 ("network connection was lost"), but plain GETs work — so the Shortcut sends the
+ *    token + content in the query string. (Token in the URL is acceptable here: it's a scoped,
+ *    revocable capture token for a personal tool.)
+ */
+export async function GET(req: NextRequest) {
+  const params = new URL(req.url).searchParams;
+  const content = params.get("content");
+  if (!content || !content.trim()) {
+    return NextResponse.json({ ok: true, service: "capture" });
+  }
+  const { db } = createDb();
+  const token = params.get("token");
+  const principal = token ? await verifyApiToken(db, token) : await resolveAuth(db, req);
+  if (!principal) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  return captureString(db, principal.userId, content.trim());
+}
+
+/**
+ * POST accepts a JSON `{ content }` body or a multipart `content` field (the latter can carry a
+ * real file/image). Always targets the caller's personal library.
  */
 export async function POST(req: NextRequest) {
   const { db } = createDb();
   const principal = await resolveAuth(db, req);
   if (!principal) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  // Accept a JSON body { content } (simplest request for the Shortcut — no multipart) OR a
-  // multipart form field `content` (needed to carry a real file/image).
   const contentType = req.headers.get("content-type") ?? "";
   let content: FormDataEntryValue | null;
   if (contentType.includes("application/json")) {
@@ -56,38 +84,19 @@ export async function POST(req: NextRequest) {
     const form = await req.formData().catch(() => null);
     content = form?.get("content") ?? null;
   }
-  const kbId = await getOrCreatePersonalKb(db, principal.userId);
-  const deps = resolveIngestDeps();
-
-  // A bare http(s) link is fetched as a page; any other string is a text note. Used for both a
-  // plain string field and a text file (the Shortcut may send either), so field type doesn't matter.
-  const ingestString = async (s: string) => {
-    const isUrl = /^https?:\/\/\S+$/i.test(s);
-    const input: IngestInput = isUrl
-      ? { kbId, addedBy: principal.userId, captureMode: "url_fetch", kind: "web",
-          mimeType: null, sourceUrl: s, title: null, rawContent: "" }
-      : { kbId, addedBy: principal.userId, captureMode: "selection", kind: "text",
-          mimeType: "text/plain", sourceUrl: null, title: null, rawContent: s };
-    const { documentId } = await enqueueIngestion(db, input);
-    return accept(documentId, () => processJob(db, deps.ai, deps.converter, deps.urlFetcher, {
-      documentId, kbId, mimeType: input.mimeType, text: input.rawContent,
-      sourceUrl: input.sourceUrl, filename: input.title,
-    }));
-  };
 
   if (content instanceof File) {
     const mimeType = content.type || "application/octet-stream";
-    // A text share wrapped as a file (Shortcuts commonly does this for links/selections):
-    // decode and route it as a string, so links are still fetched and notes stay notes.
     if (mimeType.startsWith("text/")) {
       const text = new TextDecoder().decode(new Uint8Array(await content.arrayBuffer())).trim();
-      if (text) return ingestString(text);
+      if (text) return captureString(db, principal.userId, text);
     }
-    // A real binary document → blob + converter.
     if (content.size > MAX_UPLOAD_BYTES) {
       return NextResponse.json({ error: "file too large (max 25 MB)" }, { status: 413 });
     }
     const bytes = new Uint8Array(await content.arrayBuffer());
+    const kbId = await getOrCreatePersonalKb(db, principal.userId);
+    const deps = resolveIngestDeps();
     const blobKey = await resolveBlobStore().put(bytes, mimeType);
     const documentId = await insertDocument(db, {
       kbId, addedBy: principal.userId, kind: kindForMime(mimeType), captureMode: "upload",
@@ -102,7 +111,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (typeof content === "string" && content.trim()) {
-    return ingestString(content.trim());
+    return captureString(db, principal.userId, content.trim());
   }
 
   return NextResponse.json({ error: "content required" }, { status: 400 });
