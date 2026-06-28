@@ -28,7 +28,7 @@ describe("token query layer", () => {
     const found = list.find((t) => t.id === id)!;
     expect(found.name).toBe("laptop");
     expect(found.revoked).toBe(false);
-    expect((found as Record<string, unknown>).tokenHash).toBeUndefined();
+    expect((found as unknown as Record<string, unknown>).tokenHash).toBeUndefined();
     expect(await revokeApiToken(db, uid, id)).toBe(true);
     list = await listApiTokens(db, uid);
     expect(list.find((t) => t.id === id)!.revoked).toBe(true);

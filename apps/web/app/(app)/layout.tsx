@@ -10,6 +10,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <Link href="/" className="font-semibold">Library</Link>
           <Link href="/chat" className="text-neutral-600">Chat</Link>
           <Link href="/search" className="text-neutral-600">Search</Link>
+          <Link href="/settings" className="text-neutral-600">Settings</Link>
         </nav>
         <UserButton />
       </header>
