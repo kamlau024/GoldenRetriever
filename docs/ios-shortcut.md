@@ -13,8 +13,17 @@ Open the **Shortcuts** app → **+** → and add these actions:
 
 1. **Receive** *Safari web pages, Text, Images, PDFs, and Files* from the **Share Sheet**
    (tap the Shortcut's settings → "Show in Share Sheet" → accept those types).
-2. **Text** action → paste your token. (Name it `Token`.)
-3. **Text** action → paste your Base URL. (Name it `BaseURL`.)
+2. Create a named **Token** variable:
+   - Add a **Text** action → paste your token.
+   - Add a **Set Variable** action right below it → tap the **Variable Name** field and type
+     `Token`. (Its value auto-fills with the Text above.) You can't rename the Text action
+     itself — the *Set Variable* action is what gives the value a name.
+3. Create a named **BaseURL** variable the same way:
+   - **Text** action → paste your Base URL → **Set Variable** → name it `BaseURL`.
+
+   > To insert `Token` or `BaseURL` into a field later, tap the field, then tap **Select
+   > Variable** (or the variables strip above the keyboard) and pick it — don't type the name.
+
 4. **If** *Shortcut Input* **has any value** and is a **URL**:
    - **Get Contents of URL**
      - URL: `BaseURL` + `/api/ingest`
