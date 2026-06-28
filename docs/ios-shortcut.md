@@ -28,14 +28,12 @@ fields are hidden until you tap it.
 7. **Headers** → tap **Add new header**:
    - left **Key** box → type `Authorization`
    - right **Value** box → type `Bearer ` then your token, e.g. `Bearer grt_abc123…`
-8. **Request Body** → it defaults to **JSON**; tap it and switch to **Form**.
-9. Under Request Body, tap **Add new field** → in the little menu choose **Text**.
+8. **Request Body** → leave it on **JSON** (this is the default; do NOT use Form — Shortcuts'
+   multipart Form body gets dropped before it reaches the server: "network connection was lost").
+9. Under Request Body, tap **Add new field** → choose **Text**.
    - **Key** → type `content`
    - **Value** → tap it → choose **Shortcut Input** (if it's not offered directly, tap
      **Select Variable** → **Shortcut Input**).
-   - Use **Text**, not **File**: a *File* field makes Shortcuts try to *download* a shared link
-     to turn it into a file, which fails ("network connection was lost") before the request is
-     even sent. A *Text* field passes the link straight through, and the server fetches the page.
 
 ### C. Make it appear in the Share Sheet
 10. Tap the **ⓘ** (Info) button on the bottom toolbar → turn **Show in Share Sheet** ON.
@@ -47,11 +45,10 @@ fields are hidden until you tap it.
 
 Tap **Done** to save. That's the whole shortcut — three actions at most.
 
-> **Links, text, and most documents work with the Text field.** A shared web page is sent as
-> its URL and fetched server-side; selected text becomes a note; a shared PDF is sent as its
-> extracted text. **Images** (and storing the original file via the converter) need a *File*
-> field instead — but a File field breaks links, so if you want native file/image upload, make
-> a **second** shortcut that uses a **File** field named `content` and share files to that one.
+> **This JSON shortcut captures links and text.** A shared web page is sent as its URL and
+> fetched server-side; selected text becomes a note. **Files/images** can't ride in a JSON body —
+> for native PDF/image upload, make a **second** shortcut whose *Get Contents of URL* uses
+> **Request Body → Form** with a **File** field named `content`, and share files to that one.
 >
 > **Don't want the token inline?** Add a **Text** action with your token, then a **Set Variable**
 > action — tap **Variable Name** and type `Token` — and insert it via **Select Variable**. You
