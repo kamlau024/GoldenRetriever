@@ -23,6 +23,7 @@ const capture = (content: string | File | null, auth = true) => {
 };
 
 beforeAll(async () => {
+  delete process.env.VERCEL; // run ingestion inline (not deferred) so assertions see results
   await createUser(db, { id: "u_cap", email: "c@c.dev" });
   token = "grt_cap";
   await db.insert(schema.apiTokens).values({
