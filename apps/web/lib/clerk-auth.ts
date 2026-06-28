@@ -31,3 +31,32 @@ export async function resolveAuth(db: Db, req: Request): Promise<Principal | nul
   });
   return { userId };
 }
+
+// --- Session-only auth (token management) -------------------------------------
+// Token-management endpoints must NOT accept bearer capture tokens — a leaked token
+// could otherwise mint or revoke tokens. resolveSessionUser uses the Clerk session
+// only and never inspects the Authorization header.
+let sessionOverride: string | null | undefined; // undefined = use real Clerk
+/** Test seam: force the session user (null = no session). */
+export function __setSessionUser(userId: string | null) { sessionOverride = userId; }
+/** Test seam: reset to real Clerk resolution. */
+export function __clearSessionUser() { sessionOverride = undefined; }
+
+export async function resolveSessionUser(db: Db, _req: Request): Promise<Principal | null> {
+  if (sessionOverride !== undefined) return sessionOverride ? { userId: sessionOverride } : null;
+  let userId: string | null;
+  try {
+    ({ userId } = await auth());
+  } catch {
+    return null;
+  }
+  if (!userId) return null;
+  const u = await currentUser();
+  await upsertUser(db, {
+    id: userId,
+    email: u?.primaryEmailAddress?.emailAddress ?? `${userId}@clerk.local`,
+    name: u?.fullName ?? undefined,
+    imageUrl: u?.imageUrl,
+  });
+  return { userId };
+}
