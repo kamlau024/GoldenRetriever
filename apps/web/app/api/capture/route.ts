@@ -28,6 +28,14 @@ async function accept(documentId: string, work: () => Promise<void>) {
 }
 
 /**
+ * Liveness / connectivity probe (no auth). Lets the iOS Shortcut confirm it can reach the server
+ * at all with a plain GET, independent of the authenticated POST path.
+ */
+export async function GET() {
+  return NextResponse.json({ ok: true, service: "capture" });
+}
+
+/**
  * One-shot capture endpoint for the iOS Shortcut: accepts a single `content` form field — a
  * file, a bare http(s) URL, or plain text — and routes it server-side so the Shortcut needs no
  * type detection. Always targets the caller's personal library.
