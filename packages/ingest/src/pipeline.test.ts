@@ -61,6 +61,20 @@ describe("runIngestion", () => {
     expect(doc?.status).toBe("failed");
   });
 
+  it("titles a titleless text document from a snippet of its content", async () => {
+    const docId = await insertDocument(db, {
+      kbId, addedBy: userId, kind: "text", captureMode: "selection",
+      sourceUrl: null, title: null, mimeType: "text/plain",
+    });
+    await runIngestion(db, ai, conv, {
+      documentId: docId, kbId, mimeType: "text/plain",
+      text: "Tawaraya is a centuries-old ryokan in Kyoto, beloved for its quiet hospitality.",
+    });
+    const doc = await getDocument(db, docId, kbId);
+    expect(doc?.status).toBe("ready");
+    expect(doc?.title).toMatch(/^Tawaraya is a centuries-old ryokan in Kyoto/);
+  });
+
   it("fetches and parses an html URL when no inline content is provided", async () => {
     const docId = await insertDocument(db, {
       kbId, addedBy: userId, kind: "web", captureMode: "url_fetch",

@@ -1,5 +1,5 @@
 import type { drizzle } from "drizzle-orm/postgres-js";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { AiClient } from "@gr/ai";
 import { schema, type NewChunk } from "@gr/db";
 import { insertChunks, setDocumentReady, setDocumentFailed } from "@gr/db/queries";
@@ -9,6 +9,14 @@ import { chunkText } from "./chunk.js";
 import { fetchUrlContent, type UrlFetcher } from "./fetch-url.js";
 
 type Db = ReturnType<typeof drizzle>;
+
+/** A short title derived from the body when a document has no real title (e.g. pasted text),
+ *  so the library shows a preview instead of "Untitled". */
+export function snippetTitle(markdown: string, max = 70): string | null {
+  const s = markdown.replace(/\s+/g, " ").trim();
+  if (!s) return null;
+  return s.length > max ? s.slice(0, max).trimEnd() + "…" : s;
+}
 
 export interface IngestionWork {
   documentId: string;
@@ -60,10 +68,12 @@ export async function runIngestion(
     // Best-effort tagging — failure here must not fail ingestion.
     try { await ai.tag(extracted.markdown); } catch { /* ignore in Stage 0 */ }
 
-    // Set title if the document didn't have one.
-    if (extracted.title) {
-      await db.update(schema.documents).set({ title: extracted.title })
-        .where(eq(schema.documents.id, work.documentId));
+    // Fill in a title only when the document doesn't already have one: an extracted title
+    // (page <title>, filename) if present, else a snippet of the content (e.g. pasted text).
+    const newTitle = extracted.title ?? snippetTitle(extracted.markdown);
+    if (newTitle) {
+      await db.update(schema.documents).set({ title: newTitle })
+        .where(and(eq(schema.documents.id, work.documentId), isNull(schema.documents.title)));
     }
     await setDocumentReady(db, work.documentId, {
       wordCount: extracted.wordCount, lang: "en",
