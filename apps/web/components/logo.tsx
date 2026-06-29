@@ -4,10 +4,17 @@ import { cn } from "@/lib/utils";
 export function LogoMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 32 32" role="img" aria-label="GoldenRetriever" className={cn("size-7 text-primary", className)}>
-      <path fill="currentColor" d="M16 4c-2.2 0-4 1.6-4.4 3.7C9.1 7.9 7 9.9 7 12.6c0 1 .3 1.9.8 2.7C6.7 16.5 6 18 6 19.7 6 23.7 10.5 27 16 27s10-3.3 10-7.3c0-1.7-.7-3.2-1.8-4.4.5-.8.8-1.7.8-2.7 0-2.7-2.1-4.7-4.6-4.9C19.9 5.6 18.2 4 16 4Z" />
-      <circle cx="12.5" cy="17" r="1.4" fill="var(--background)" />
-      <circle cx="19.5" cy="17" r="1.4" fill="var(--background)" />
-      <path d="M14 21c.6.7 3.4.7 4 0" stroke="var(--background)" strokeWidth="1.3" strokeLinecap="round" fill="none" />
+      <g fill="currentColor">
+        {/* floppy ears */}
+        <path d="M10.6 8.6C7.1 9.1 4.6 11.7 4.6 15.7c0 3.2 1.8 5.7 4.1 6.3 1.2.3 2-.6 2-2.1 0-1-.3-2.2-.5-3.5-.4-2.4-.3-4.7.4-7.8Z" />
+        <path d="M21.4 8.6c3.5.5 6 3.1 6 7.1 0 3.2-1.8 5.7-4.1 6.3-1.2.3-2-.6-2-2.1 0-1 .3-2.2.5-3.5.4-2.4.3-4.7-.4-7.8Z" />
+        {/* head + muzzle */}
+        <path d="M16 5.5c-3.7 0-6.4 2.5-6.8 6.2-.2 1.9 0 3.6.6 5.3.6 2 1.8 3.9 3.1 5.2.9.9 2 1.6 3.1 1.6s2.2-.7 3.1-1.6c1.3-1.3 2.5-3.2 3.1-5.2.6-1.7.8-3.4.6-5.3-.4-3.7-3.1-6.2-6.8-6.2Z" />
+      </g>
+      {/* eyes + nose, cut out in the background colour so they theme */}
+      <ellipse cx="12.7" cy="14.6" rx="1.25" ry="1.55" fill="var(--background)" />
+      <ellipse cx="19.3" cy="14.6" rx="1.25" ry="1.55" fill="var(--background)" />
+      <path d="M16 18.4c-1.35 0-2.3.85-2.3 1.8 0 1.05 1.05 2 2.3 2s2.3-.95 2.3-2c0-.95-.95-1.8-2.3-1.8Z" fill="var(--background)" />
     </svg>
   );
 }
