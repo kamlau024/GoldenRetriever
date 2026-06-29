@@ -70,10 +70,9 @@ export function Chat({ kbId }: { kbId: string }) {
         body: JSON.stringify({ kbId, message }),
       });
       if (!res.ok) { setAssistant({ content: ERR }); return; }
-      const { parseCitations } = await import("../lib/citations.js");
-      const citations = parseCitations(res.headers.get("x-citations"))
+      const { parseCitations, citedOnly } = await import("../lib/citations.js");
+      const allCitations = parseCitations(res.headers.get("x-citations"))
         .map((c) => ({ title: c.title, sourceUrl: c.sourceUrl }));
-      setAssistant({ citations });
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       let acc = "";
@@ -85,7 +84,9 @@ export function Chat({ kbId }: { kbId: string }) {
       }
       // An empty stream means generation failed mid-flight (e.g. a rate-limit/gateway error
       // that the server couldn't surface) — show a message instead of an empty bubble.
-      if (!acc.trim()) setAssistant({ content: ERR });
+      if (!acc.trim()) { setAssistant({ content: ERR }); return; }
+      // Show only the sources the answer actually cited as [n], not every retrieved chunk.
+      setAssistant({ citations: citedOnly(acc, allCitations) });
     } catch {
       setAssistant({ content: "⚠️ Network error — please try again." });
     } finally {

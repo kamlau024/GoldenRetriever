@@ -13,3 +13,14 @@ export function parseCitations(header: string | null | undefined): Citation[] {
     return Array.isArray(v) ? v as Citation[] : [];
   } catch { return []; }
 }
+
+/**
+ * Keep only the citations the assistant actually referenced as `[n]` in its answer, so loosely
+ * retrieved-but-unused sources don't clutter the message. Falls back to all citations when the
+ * answer contains no `[n]` markers at all.
+ */
+export function citedOnly<T>(answer: string, all: T[]): T[] {
+  const used = new Set([...answer.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1])));
+  if (used.size === 0) return all;
+  return all.filter((_, i) => used.has(i + 1));
+}
