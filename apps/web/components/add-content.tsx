@@ -1,53 +1,81 @@
 "use client";
 import { useState, type ChangeEvent } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 
 export function AddContent({ kbId }: { kbId: string }) {
+  const router = useRouter();
   const [text, setText] = useState("");
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function submit(body: Record<string, unknown>) {
-    setBusy(true);
-    await fetch("/api/ingest", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ kbId, ...body }),
-    });
+  async function done(res: Response) {
     setBusy(false);
-    setText(""); setUrl("");
-    location.reload();
+    if (res.ok) {
+      setText(""); setUrl("");
+      toast.success("Saved — processing…");
+      router.refresh();
+    } else {
+      toast.error("Couldn't save that. Please try again.");
+    }
+  }
+
+  async function submitJson(body: Record<string, unknown>) {
+    setBusy(true);
+    try {
+      await done(await fetch("/api/ingest", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ kbId, ...body }),
+      }));
+    } catch { setBusy(false); toast.error("Network error."); }
   }
 
   async function uploadFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setBusy(true);
-    const fd = new FormData();
-    fd.set("kbId", kbId);
-    fd.set("file", file);
-    await fetch("/api/upload", { method: "POST", body: fd });
-    setBusy(false);
-    location.reload();
+    const fd = new FormData(); fd.set("kbId", kbId); fd.set("file", file);
+    try { await done(await fetch("/api/upload", { method: "POST", body: fd })); }
+    catch { setBusy(false); toast.error("Network error."); }
+    e.target.value = "";
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-neutral-200 p-4">
-      <textarea className="w-full rounded border p-2" rows={3} placeholder="Paste text to save…"
-        value={text} onChange={(e) => setText(e.target.value)} />
-      <div className="flex gap-2">
-        <button disabled={busy || !text.trim()} onClick={() => submit({ text })}
-          className="rounded bg-neutral-900 px-3 py-1.5 text-white disabled:opacity-50">Save text</button>
-      </div>
-      <div className="flex gap-2">
-        <input className="flex-1 rounded border p-2" placeholder="https://… (saves the page)"
-          value={url} onChange={(e) => setUrl(e.target.value)} />
-        <button disabled={busy || !url.trim()} onClick={() => submit({ url })}
-          className="rounded border px-3 py-1.5 disabled:opacity-50">Save URL</button>
-      </div>
-      <div className="flex items-center gap-2">
-        <label className="text-sm text-neutral-600">Upload a PDF/doc/image:</label>
-        <input type="file" disabled={busy} onChange={uploadFile}
-          accept=".pdf,.docx,.pptx,.xlsx,.png,.jpg,.jpeg" />
-      </div>
-    </div>
+    <Card>
+      <CardHeader><CardTitle>Add to your library</CardTitle></CardHeader>
+      <CardContent>
+        <Tabs defaultValue="text">
+          <TabsList>
+            <TabsTrigger value="text">Text</TabsTrigger>
+            <TabsTrigger value="url">URL</TabsTrigger>
+            <TabsTrigger value="file">File</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="text" className="space-y-3">
+            <Textarea rows={4} placeholder="Paste text to save…" value={text}
+              onChange={(e) => setText(e.target.value)} />
+            <Button disabled={busy || !text.trim()} onClick={() => submitJson({ text })}>Save text</Button>
+          </TabsContent>
+
+          <TabsContent value="url" className="space-y-3">
+            <Input type="url" placeholder="https://… (saves the page)" value={url}
+              onChange={(e) => setUrl(e.target.value)} />
+            <Button disabled={busy || !url.trim()} onClick={() => submitJson({ url })}>Save page</Button>
+          </TabsContent>
+
+          <TabsContent value="file" className="space-y-3">
+            <Label className="text-sm text-muted-foreground">PDF, Word, PowerPoint, Excel, or an image</Label>
+            <Input type="file" disabled={busy} onChange={uploadFile}
+              accept=".pdf,.docx,.pptx,.xlsx,.png,.jpg,.jpeg" />
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+    </Card>
   );
 }
