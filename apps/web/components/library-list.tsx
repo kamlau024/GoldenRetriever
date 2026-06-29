@@ -63,7 +63,7 @@ export function LibraryList({ docs }: { docs: LibraryDoc[] }) {
             <TableHead>Title</TableHead>
             <TableHead className="w-32">Status</TableHead>
             <TableHead className="w-48">Added</TableHead>
-            <TableHead className="w-16 text-right">·</TableHead>
+            <TableHead className="w-16 text-right"><span className="sr-only">Actions</span></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -83,7 +83,7 @@ export function LibraryList({ docs }: { docs: LibraryDoc[] }) {
                 <TableCell>
                   <Badge className={cn("border-transparent", statusBadgeClass(d.status))}>{statusLabel(d.status)}</Badge>
                 </TableCell>
-                <TableCell className="text-sm text-muted-foreground">{fmt.format(new Date(d.capturedAt))}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">{fmt.format(d.capturedAt)}</TableCell>
                 <TableCell className="text-right">
                   <AlertDialog>
                     <AlertDialogTrigger

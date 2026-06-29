@@ -7,7 +7,7 @@ const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("sonner", () => ({ toast }));
 import { AddContent } from "./add-content.js";
 
-beforeEach(() => { vi.restoreAllMocks(); refresh.mockClear(); toast.success.mockClear(); });
+beforeEach(() => { vi.restoreAllMocks(); refresh.mockClear(); toast.success.mockClear(); toast.error.mockClear(); });
 afterEach(() => vi.unstubAllGlobals());
 
 describe("AddContent", () => {
