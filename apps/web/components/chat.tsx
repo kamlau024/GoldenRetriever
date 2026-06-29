@@ -61,15 +61,19 @@ export function Chat({ kbId }: { kbId: string }) {
     setMessages((m) => [...m, userTurn, { id: assistantId, role: "assistant", content: "" }]);
     setInput("");
     setBusy(true);
+    const setAssistant = (patch: Partial<Turn>) =>
+      setMessages((m) => m.map((t) => (t.id === assistantId ? { ...t, ...patch } : t)));
+    const ERR = "⚠️ The AI couldn't generate a response right now — it may be rate-limited (the free AI tier limits requests). Please try again in a moment.";
     try {
       const res = await fetch("/api/chat", {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ kbId, message }),
       });
+      if (!res.ok) { setAssistant({ content: ERR }); return; }
       const { parseCitations } = await import("../lib/citations.js");
       const citations = parseCitations(res.headers.get("x-citations"))
         .map((c) => ({ title: c.title, sourceUrl: c.sourceUrl }));
-      setMessages((m) => m.map((t) => (t.id === assistantId ? { ...t, citations } : t)));
+      setAssistant({ citations });
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       let acc = "";
@@ -77,8 +81,13 @@ export function Chat({ kbId }: { kbId: string }) {
         const { done, value } = await reader.read();
         if (done) break;
         acc += decoder.decode(value, { stream: true });
-        setMessages((m) => m.map((t) => (t.id === assistantId ? { ...t, content: acc } : t)));
+        setAssistant({ content: acc });
       }
+      // An empty stream means generation failed mid-flight (e.g. a rate-limit/gateway error
+      // that the server couldn't surface) — show a message instead of an empty bubble.
+      if (!acc.trim()) setAssistant({ content: ERR });
+    } catch {
+      setAssistant({ content: "⚠️ Network error — please try again." });
     } finally {
       setBusy(false);
     }
