@@ -20,12 +20,28 @@ export function safeHref(u: string | null | undefined): string {
   }
 }
 
+/** Bouncing dots shown in the assistant bubble while waiting for the first token. */
+function TypingDots() {
+  return (
+    <span className="inline-flex items-center gap-1 py-1" aria-label="Generating response">
+      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground/60 [animation-delay:-0.3s]" />
+      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground/60 [animation-delay:-0.15s]" />
+      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground/60" />
+    </span>
+  );
+}
+
+// Citation chips get a distinct amber background so they stand out from the (muted) reply bubble.
+const CITE = "border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-200";
+
 export function Transcript({ messages }: { messages: Turn[] }) {
   return (
     <div className="space-y-4">
       {messages.map((m) => (
         <div key={m.id} className={m.role === "user" ? "text-right" : "text-left"}>
-          <p className="inline-block rounded-lg bg-muted px-3 py-2">{m.content}</p>
+          <p className="inline-block rounded-lg bg-muted px-3 py-2 text-left">
+            {m.role === "assistant" && m.content === "" ? <TypingDots /> : m.content}
+          </p>
           {m.citations?.length ? (
             <div className="mt-1 flex flex-wrap gap-1">
               {m.citations.map((c, i) => {
@@ -34,9 +50,9 @@ export function Transcript({ messages }: { messages: Turn[] }) {
                 // Pasted text / uploads have no external URL → show a non-clickable chip
                 // instead of a dead link that opens a blank tab.
                 return href === "#" ? (
-                  <Badge key={i} variant="secondary" title="Saved text — no external source">{label}</Badge>
+                  <Badge key={i} variant="secondary" className={CITE} title="Saved text — no external source">{label}</Badge>
                 ) : (
-                  <Badge key={i} variant="secondary" render={<a href={href} target="_blank" rel="noopener noreferrer" className="underline" />}>{c.title ?? c.sourceUrl}</Badge>
+                  <Badge key={i} variant="secondary" className={CITE} render={<a href={href} target="_blank" rel="noopener noreferrer" className="underline" />}>{c.title ?? c.sourceUrl}</Badge>
                 );
               })}
             </div>
