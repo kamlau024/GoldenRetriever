@@ -1,20 +1,11 @@
 import { cn } from "@/lib/utils";
 
-/** Minimal geometric golden-retriever head mark. Uses currentColor so it themes. */
+/** Standing golden-retriever silhouette (side profile, facing left). currentColor so it themes. */
 export function LogoMark({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 32 32" role="img" aria-label="GoldenRetriever" className={cn("size-7 text-primary", className)}>
-      <g fill="currentColor">
-        {/* floppy ears */}
-        <path d="M10.6 8.6C7.1 9.1 4.6 11.7 4.6 15.7c0 3.2 1.8 5.7 4.1 6.3 1.2.3 2-.6 2-2.1 0-1-.3-2.2-.5-3.5-.4-2.4-.3-4.7.4-7.8Z" />
-        <path d="M21.4 8.6c3.5.5 6 3.1 6 7.1 0 3.2-1.8 5.7-4.1 6.3-1.2.3-2-.6-2-2.1 0-1 .3-2.2.5-3.5.4-2.4.3-4.7-.4-7.8Z" />
-        {/* head + muzzle */}
-        <path d="M16 5.5c-3.7 0-6.4 2.5-6.8 6.2-.2 1.9 0 3.6.6 5.3.6 2 1.8 3.9 3.1 5.2.9.9 2 1.6 3.1 1.6s2.2-.7 3.1-1.6c1.3-1.3 2.5-3.2 3.1-5.2.6-1.7.8-3.4.6-5.3-.4-3.7-3.1-6.2-6.8-6.2Z" />
-      </g>
-      {/* eyes + nose, cut out in the background colour so they theme */}
-      <ellipse cx="12.7" cy="14.6" rx="1.25" ry="1.55" fill="var(--background)" />
-      <ellipse cx="19.3" cy="14.6" rx="1.25" ry="1.55" fill="var(--background)" />
-      <path d="M16 18.4c-1.35 0-2.3.85-2.3 1.8 0 1.05 1.05 2 2.3 2s2.3-.95 2.3-2c0-.95-.95-1.8-2.3-1.8Z" fill="var(--background)" />
+    <svg viewBox="0 0 64 40" role="img" aria-label="GoldenRetriever" className={cn("h-7 w-auto text-primary", className)}>
+      <path fill="currentColor" d="M5 20C5 18 6 16.5 8 15.5 11 13 13 11.5 15 9.5 16 8.5 17.5 8 18.5 9 19 9.5 19 11 18.7 12.5 18.4 14 18 15.5 19.5 15.2 20 15 20.5 14 21 13.2 28 11.5 40 11 46 11.6 47.5 11.7 48.5 10.5 49.5 9 51 6.5 53 4.5 55.5 4.8 58 5.1 58.5 7.5 57.3 9.8 56.3 11.7 54 12.3 52 12.8 50 14 49.3 16 49 18.5L49.4 33C49.5 34.8 48.7 35.6 47 35.6 45.4 35.6 44.6 34.8 44.6 33L44.2 23.5C43.9 22.8 42.8 22.6 41.6 23 36 25.5 30 25.8 25.5 23.8L25.2 33C25.3 34.8 24.5 35.6 22.8 35.6 21.2 35.6 20.4 34.8 20.4 33L20 22.5C17.5 21.5 14 21.3 11.5 21.8 8.5 22.3 6.5 21.8 5 20.5 4.6 20.3 4.7 20.1 5 20Z" />
+      <circle cx="12.5" cy="14.6" r="0.9" fill="var(--background)" />
     </svg>
   );
 }
