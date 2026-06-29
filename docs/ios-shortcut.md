@@ -27,7 +27,14 @@ Capture links, text, and files into GoldenRetriever from the iOS Share Sheet.
    `https://goldenretriever-web.vercel.app/api/capture?token=YOUR_TOKEN&content=`
    then, immediately after `content=`, **insert the URL Encoded variable** (tap at the end of
    the URL → **Select Variable** → the *URL Encoded* output of step 2).
-5. Leave **Method** as **GET** (the default). Do **not** add headers or a request body.
+5. Leave **Method** as **GET** (the default). Do **not** add a request body.
+
+   > **More secure (recommended):** keep the token **out of the URL**. Use the URL
+   > `…/api/capture?content=` + the URL-Encoded variable (no `token=`), then tap **Show More →
+   > Headers → Add new header**: `Authorization` = `Bearer YOUR_TOKEN`. The server accepts the
+   > token from that header on a GET, so it never appears in server logs. Headers on a GET don't
+   > trigger the POST-body failure. Fall back to `?token=` in the URL only if the header variant
+   > fails on your device.
 
 ### D. Share Sheet + confirmation
 6. Tap the **ⓘ** (Info) button → **Show in Share Sheet** ON → ensure **URLs** and **Text** are
