@@ -1,5 +1,9 @@
 "use client";
 import { useState, type FormEvent } from "react";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 export interface Citation { title: string | null; sourceUrl: string | null; }
 export interface Turn { id: string; role: string; content: string; citations?: Citation[]; }
@@ -21,7 +25,7 @@ export function Transcript({ messages }: { messages: Turn[] }) {
     <div className="space-y-4">
       {messages.map((m) => (
         <div key={m.id} className={m.role === "user" ? "text-right" : "text-left"}>
-          <p className="inline-block rounded-lg bg-neutral-100 px-3 py-2">{m.content}</p>
+          <p className="inline-block rounded-lg bg-muted px-3 py-2">{m.content}</p>
           {m.citations?.length ? (
             <div className="mt-1 flex flex-wrap gap-1">
               {m.citations.map((c, i) => {
@@ -30,11 +34,9 @@ export function Transcript({ messages }: { messages: Turn[] }) {
                 // Pasted text / uploads have no external URL → show a non-clickable chip
                 // instead of a dead link that opens a blank tab.
                 return href === "#" ? (
-                  <span key={i} title="Saved text — no external source"
-                    className="rounded bg-amber-100 px-2 py-0.5 text-xs text-neutral-700">{label}</span>
+                  <Badge key={i} variant="secondary" title="Saved text — no external source">{label}</Badge>
                 ) : (
-                  <a key={i} href={href} target="_blank" rel="noopener noreferrer"
-                    className="rounded bg-amber-100 px-2 py-0.5 text-xs underline">{c.title ?? c.sourceUrl}</a>
+                  <Badge key={i} variant="secondary" render={<a href={href} target="_blank" rel="noopener noreferrer" className="underline" />}>{c.title ?? c.sourceUrl}</Badge>
                 );
               })}
             </div>
@@ -83,13 +85,15 @@ export function Chat({ kbId }: { kbId: string }) {
   }
 
   return (
-    <div className="space-y-4">
-      <Transcript messages={messages} />
-      <form onSubmit={send} className="flex gap-2">
-        <input className="flex-1 rounded border p-2" value={input} onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask your library…" />
-        <button disabled={busy} className="rounded bg-neutral-900 px-3 py-1.5 text-white disabled:opacity-50">Ask</button>
-      </form>
-    </div>
+    <Card className="p-4">
+      <div className="space-y-4">
+        <Transcript messages={messages} />
+        <form onSubmit={send} className="flex gap-2">
+          <Input className="flex-1" value={input} onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask your library…" />
+          <Button type="submit" disabled={busy}>Ask</Button>
+        </form>
+      </div>
+    </Card>
   );
 }

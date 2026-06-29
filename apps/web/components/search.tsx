@@ -1,24 +1,27 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import { safeHref } from "./chat.js";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 export interface SearchResult { chunkId: string; documentId: string; content: string; title: string | null; sourceUrl: string | null; }
 
 export function Results({ results, searched }: { results: SearchResult[]; searched: boolean }) {
-  if (!searched) return <p className="text-neutral-500">Search your library.</p>;
-  if (results.length === 0) return <p className="text-neutral-500">No matches.</p>;
+  if (!searched) return <p className="text-muted-foreground">Search your library.</p>;
+  if (results.length === 0) return <p className="text-muted-foreground">No matches.</p>;
   return (
     <ul className="space-y-3">
       {results.map((r) => {
         const href = safeHref(r.sourceUrl);
         return (
-          <li key={r.chunkId} className="rounded border border-neutral-200 p-3">
+          <li key={r.chunkId} className="rounded border border-border p-3">
             {href === "#" ? (
               <span className="text-sm font-medium">{r.title ?? "Untitled"}</span>
             ) : (
               <a href={href} target="_blank" rel="noopener noreferrer" className="text-sm font-medium underline">{r.title ?? r.sourceUrl}</a>
             )}
-            <p className="mt-1 text-sm text-neutral-600">{r.content.slice(0, 240)}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{r.content.slice(0, 240)}</p>
           </li>
         );
       })}
@@ -38,12 +41,14 @@ export function Search({ kbId }: { kbId: string }) {
     setResults(json.results ?? []); setSearched(true);
   }
   return (
-    <div className="space-y-4">
-      <form onSubmit={run} className="flex gap-2">
-        <input className="flex-1 rounded border p-2" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search…" />
-        <button className="rounded bg-neutral-900 px-3 py-1.5 text-white">Search</button>
-      </form>
-      <Results results={results} searched={searched} />
-    </div>
+    <Card className="p-4">
+      <div className="space-y-4">
+        <form onSubmit={run} className="flex gap-2">
+          <Input className="flex-1" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search…" />
+          <Button type="submit">Search</Button>
+        </form>
+        <Results results={results} searched={searched} />
+      </div>
+    </Card>
   );
 }
