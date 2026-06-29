@@ -14,12 +14,12 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-import { statusBadgeClass, statusLabel } from "@/lib/status";
+import { statusBadgeClass, statusLabel, sourceLabel } from "@/lib/status";
 import { safeHref } from "@/components/chat";
 
 export interface LibraryDoc {
   id: string; title: string | null; sourceUrl: string | null;
-  kind: string; status: string; capturedAt: Date;
+  kind: string; captureMode: string; status: string; capturedAt: Date;
 }
 
 const fmt = new Intl.DateTimeFormat("en-US", {
@@ -62,6 +62,7 @@ export function LibraryList({ docs }: { docs: LibraryDoc[] }) {
           <TableRow>
             <TableHead>Title</TableHead>
             <TableHead className="w-32">Status</TableHead>
+            <TableHead className="w-24">Source</TableHead>
             <TableHead className="w-48">Added</TableHead>
             <TableHead className="w-16 text-right"><span className="sr-only">Actions</span></TableHead>
           </TableRow>
@@ -82,6 +83,9 @@ export function LibraryList({ docs }: { docs: LibraryDoc[] }) {
                 </TableCell>
                 <TableCell>
                   <Badge className={cn("border-transparent", statusBadgeClass(d.status))}>{statusLabel(d.status)}</Badge>
+                </TableCell>
+                <TableCell>
+                  <Badge variant="secondary">{sourceLabel(d.captureMode)}</Badge>
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">{fmt.format(d.capturedAt)}</TableCell>
                 <TableCell className="text-right">

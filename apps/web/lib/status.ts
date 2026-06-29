@@ -13,3 +13,19 @@ const CLASSES: Record<string, string> = {
 export function statusBadgeClass(status: string): string {
   return CLASSES[status] ?? CLASSES.queued;
 }
+
+const SOURCES: Record<string, string> = {
+  selection: "Text",
+  url_fetch: "URL",
+  full_dom: "URL",
+  upload: "File",
+};
+
+/** Human label for how a document was captured (its "source"). Unknown/future capture modes
+ *  are title-cased so a newly-added type still renders something sensible (never blank). */
+export function sourceLabel(captureMode: string): string {
+  return (
+    SOURCES[captureMode] ??
+    (captureMode ? captureMode.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Other")
+  );
+}

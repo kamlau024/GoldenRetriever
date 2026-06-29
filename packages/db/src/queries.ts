@@ -73,7 +73,8 @@ export async function getOrCreatePersonalKb(db: Db, userId: string) {
 export async function listDocuments(db: Db, kbId: string, limit = 100) {
   return db.select({
     id: documents.id, title: documents.title, sourceUrl: documents.sourceUrl,
-    kind: documents.kind, status: documents.status, capturedAt: documents.capturedAt,
+    kind: documents.kind, captureMode: documents.captureMode,
+    status: documents.status, capturedAt: documents.capturedAt,
   }).from(documents).where(eq(documents.kbId, kbId)).orderBy(desc(documents.createdAt)).limit(limit);
 }
 
