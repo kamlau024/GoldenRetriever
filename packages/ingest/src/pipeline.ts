@@ -2,7 +2,7 @@ import type { drizzle } from "drizzle-orm/postgres-js";
 import { and, eq, isNull } from "drizzle-orm";
 import type { AiClient } from "@gr/ai";
 import { schema, type NewChunk } from "@gr/db";
-import { insertChunks, setDocumentReady, setDocumentFailed } from "@gr/db/queries";
+import { insertChunks, setDocumentReady, setDocumentFailed, setDocumentTags } from "@gr/db/queries";
 import { convertToMarkdown } from "./router.js";
 import type { Converter } from "./converter.js";
 import { chunkText } from "./chunk.js";
@@ -66,7 +66,10 @@ export async function runIngestion(
     await insertChunks(db, rows);
 
     // Best-effort tagging — failure here must not fail ingestion.
-    try { await ai.tag(extracted.markdown); } catch { /* ignore in Stage 0 */ }
+    try {
+      const slugs = await ai.tag(extracted.markdown);
+      if (slugs.length) await setDocumentTags(db, work.kbId, work.documentId, slugs);
+    } catch { /* ignore in Stage 0 */ }
 
     // Fill in a title only when the document doesn't already have one: an extracted title
     // (page <title>, filename) if present, else a snippet of the content (e.g. pasted text).

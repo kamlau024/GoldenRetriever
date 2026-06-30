@@ -19,7 +19,7 @@ import { safeHref } from "@/components/chat";
 
 export interface LibraryDoc {
   id: string; title: string | null; sourceUrl: string | null;
-  kind: string; captureMode: string; status: string; capturedAt: Date;
+  kind: string; captureMode: string; status: string; capturedAt: Date; tags: string[];
 }
 
 const fmt = new Intl.DateTimeFormat("en-US", {
@@ -80,6 +80,13 @@ export function LibraryList({ docs }: { docs: LibraryDoc[] }) {
                       <a href={href} target="_blank" rel="noopener noreferrer" className="hover:underline">{label}</a>
                     )}
                   </span>
+                  {d.tags.length ? (
+                    <span className="mt-1 flex flex-wrap gap-1">
+                      {d.tags.slice(0, 6).map((t) => (
+                        <span key={t} className="rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">{t}</span>
+                      ))}
+                    </span>
+                  ) : null}
                 </TableCell>
                 <TableCell>
                   <Badge className={cn("border-transparent", statusBadgeClass(d.status))}>{statusLabel(d.status)}</Badge>

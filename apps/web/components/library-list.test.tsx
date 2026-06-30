@@ -6,9 +6,9 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 import { LibraryList } from "./library-list.js";
 
 const docs = [
-  { id: "d1", title: "Kyoto guide", sourceUrl: "https://x.dev", kind: "web", captureMode: "url_fetch", status: "ready", capturedAt: new Date("2026-06-28T13:42:00Z") },
-  { id: "d2", title: null, sourceUrl: null, kind: "text", captureMode: "selection", status: "failed", capturedAt: new Date("2026-06-27T09:00:00Z") },
-  { id: "d3", title: "report.pdf", sourceUrl: null, kind: "pdf", captureMode: "upload", status: "ready", capturedAt: new Date("2026-06-26T09:00:00Z") },
+  { id: "d1", title: "Kyoto guide", sourceUrl: "https://x.dev", kind: "web", captureMode: "url_fetch", status: "ready", capturedAt: new Date("2026-06-28T13:42:00Z"), tags: ["travel", "kyoto"] },
+  { id: "d2", title: null, sourceUrl: null, kind: "text", captureMode: "selection", status: "failed", capturedAt: new Date("2026-06-27T09:00:00Z"), tags: [] },
+  { id: "d3", title: "report.pdf", sourceUrl: null, kind: "pdf", captureMode: "upload", status: "ready", capturedAt: new Date("2026-06-26T09:00:00Z"), tags: [] },
 ];
 
 describe("LibraryList", () => {
@@ -22,6 +22,9 @@ describe("LibraryList", () => {
     expect(screen.getByText("URL")).toBeTruthy();
     expect(screen.getByText("Text")).toBeTruthy();
     expect(screen.getByText("File")).toBeTruthy();
+    // tags rendered under the title
+    expect(screen.getByText("travel")).toBeTruthy();
+    expect(screen.getByText("kyoto")).toBeTruthy();
     // a formatted year is shown for the Added column
     expect(screen.getAllByText(/2026/).length).toBeGreaterThan(0);
   });

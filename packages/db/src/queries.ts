@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, desc } from "drizzle-orm";
+import { and, eq, desc, inArray } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/postgres-js";
-import { users, knowledgeBases, kbMembers, documents, chunks, conversations, messages } from "./schema.js";
+import { users, knowledgeBases, kbMembers, documents, chunks, conversations, messages, tags, documentTags } from "./schema.js";
 import type { NewChunk } from "./schema.js";
 
 type Db = ReturnType<typeof drizzle>;
@@ -70,12 +70,40 @@ export async function getOrCreatePersonalKb(db: Db, userId: string) {
   return createKnowledgeBase(db, { ownerId: userId, name: "My Library" });
 }
 
+/** Upsert auto-tags for a document (best-effort, called from the ingest pipeline). */
+export async function setDocumentTags(db: Db, kbId: string, documentId: string, slugs: string[]) {
+  for (const raw of slugs) {
+    const slug = raw.trim();
+    if (!slug) continue;
+    const existing = await db.select({ id: tags.id }).from(tags)
+      .where(and(eq(tags.kbId, kbId), eq(tags.slug, slug)));
+    let tagId = existing[0]?.id;
+    if (!tagId) {
+      tagId = id("tag");
+      await db.insert(tags).values({ id: tagId, kbId, name: slug, slug }).onConflictDoNothing();
+    }
+    await db.insert(documentTags).values({ documentId, tagId }).onConflictDoNothing();
+  }
+}
+
 export async function listDocuments(db: Db, kbId: string, limit = 100) {
-  return db.select({
+  const docs = await db.select({
     id: documents.id, title: documents.title, sourceUrl: documents.sourceUrl,
     kind: documents.kind, captureMode: documents.captureMode,
     status: documents.status, capturedAt: documents.capturedAt,
   }).from(documents).where(eq(documents.kbId, kbId)).orderBy(desc(documents.createdAt)).limit(limit);
+  if (docs.length === 0) return docs.map((d) => ({ ...d, tags: [] as string[] }));
+
+  const tagRows = await db.select({ documentId: documentTags.documentId, slug: tags.slug })
+    .from(documentTags).innerJoin(tags, eq(documentTags.tagId, tags.id))
+    .where(inArray(documentTags.documentId, docs.map((d) => d.id)));
+  const byDoc = new Map<string, string[]>();
+  for (const r of tagRows) {
+    const arr = byDoc.get(r.documentId) ?? [];
+    arr.push(r.slug);
+    byDoc.set(r.documentId, arr);
+  }
+  return docs.map((d) => ({ ...d, tags: byDoc.get(d.id) ?? [] }));
 }
 
 export async function createConversation(db: Db, c: { kbId: string; userId: string; title?: string }) {
