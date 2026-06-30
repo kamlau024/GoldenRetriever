@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, desc, inArray } from "drizzle-orm";
+import { and, eq, desc, inArray, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/postgres-js";
 import { users, knowledgeBases, kbMembers, documents, chunks, conversations, messages, tags, documentTags } from "./schema.js";
 import type { NewChunk } from "./schema.js";
@@ -84,6 +84,18 @@ export async function setDocumentTags(db: Db, kbId: string, documentId: string, 
     }
     await db.insert(documentTags).values({ documentId, tagId }).onConflictDoNothing();
   }
+}
+
+/** Ready documents in a KB that have no tags yet, with their content concatenated — used to
+ *  backfill tags for documents ingested before auto-tagging stored its results. */
+export async function untaggedDocsContent(db: Db, kbId: string): Promise<{ id: string; content: string }[]> {
+  const rows = await db.execute<{ id: string; content: string }>(sql`
+    SELECT d.id, string_agg(c.content, ' ' ORDER BY c.ordinal) AS content
+    FROM documents d JOIN chunks c ON c.document_id = d.id
+    WHERE d.kb_id = ${kbId} AND d.status = 'ready'
+      AND NOT EXISTS (SELECT 1 FROM document_tags dt WHERE dt.document_id = d.id)
+    GROUP BY d.id`);
+  return [...rows] as { id: string; content: string }[];
 }
 
 export async function listDocuments(db: Db, kbId: string, limit = 100) {
