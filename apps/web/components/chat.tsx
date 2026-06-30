@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { DogAvatar } from "@/components/logo";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export interface Citation { title: string | null; sourceUrl: string | null; }
 export interface Turn { id: string; role: string; content: string; citations?: Citation[]; }
@@ -24,6 +26,15 @@ export function safeHref(u: string | null | undefined): string {
   }
 }
 
+/** Render an assistant reply as markdown (bold, lists, links, code, …). */
+function Markdown({ children }: { children: string }) {
+  return (
+    <div className="space-y-2 text-left [&_a]:underline [&_code]:rounded [&_code]:bg-black/10 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.85em] dark:[&_code]:bg-white/15 [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_li]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-0 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-black/10 [&_pre]:p-2 dark:[&_pre]:bg-white/10 [&_strong]:font-semibold [&_ul]:list-disc [&_ul]:pl-5">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
+    </div>
+  );
+}
+
 /** Bouncing dots shown in the assistant bubble while waiting for the first token. */
 function TypingDots() {
   return (
@@ -35,8 +46,8 @@ function TypingDots() {
   );
 }
 
-// Citation chips get a distinct amber background so they stand out from the (muted) reply bubble.
-const CITE = "border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-200";
+// Citation chips: a light, outlined "source" pill — distinct from the solid amber reply bubble.
+const CITE = "border border-amber-400/60 bg-amber-50 text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200";
 
 function Avatar({ isUser, userAvatarUrl }: { isUser: boolean; userAvatarUrl?: string }) {
   if (!isUser) {
@@ -64,10 +75,13 @@ export function Transcript({ messages, userAvatarUrl }: { messages: Turn[]; user
         return (
           <div key={m.id} className={cn("flex items-start gap-2", isUser && "flex-row-reverse")}>
             <Avatar isUser={isUser} userAvatarUrl={userAvatarUrl} />
-            <div className={cn("min-w-0", isUser ? "text-right" : "text-left")}>
-              <p className="inline-block rounded-lg bg-muted px-3 py-2 text-left">
-                {m.role === "assistant" && m.content === "" ? <TypingDots /> : m.content}
-              </p>
+            <div className={cn("min-w-0 flex-1", isUser ? "ml-9 text-right" : "mr-9 text-left")}>
+              <div className={cn(
+                "inline-block max-w-full rounded-lg px-3 py-2 text-left",
+                isUser ? "bg-muted text-foreground" : "bg-amber-100 text-amber-950 dark:bg-amber-950/60 dark:text-amber-50",
+              )}>
+                {isUser ? m.content : m.content === "" ? <TypingDots /> : <Markdown>{m.content}</Markdown>}
+              </div>
               {m.citations?.length ? (
                 <div className="mt-1 flex flex-wrap gap-1">
                   {m.citations.map((c, i) => {

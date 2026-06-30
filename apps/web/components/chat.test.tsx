@@ -14,6 +14,13 @@ describe("Transcript", () => {
     expect(link.getAttribute("href")).toBe("https://x");
   });
 
+  it("renders assistant replies as markdown (bold)", () => {
+    render(<Transcript messages={[
+      { id: "1", role: "assistant", content: "This is **important**." },
+    ]} />);
+    expect(screen.getByText("important").tagName).toBe("STRONG");
+  });
+
   it("renders a non-link chip (no anchor) for a javascript: or absent source URL", () => {
     render(<Transcript messages={[
       { id: "1", role: "assistant", content: "evil", citations: [{ title: "x", sourceUrl: "javascript:alert(1)" }] },
