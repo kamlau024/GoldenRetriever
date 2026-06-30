@@ -37,6 +37,9 @@ Living list of outstanding work, so nothing planned-but-skipped gets lost. Updat
   `conversationId` to continue a thread). What's missing is the read-back: a conversation
   list/sidebar, resume an existing thread, start-new, and delete. Mostly frontend + a couple of
   list/load queries. Does **not** change what the model sees — that's "conversational memory" below.
+- **Chat history — follow-ups** *(do right after the history build, before any other stage)* — items
+  scoped out of the history design (`specs/2026-06-30-chat-history-design.md`): rename a conversation,
+  search within history, and pagination of the conversation list.
 - **Custom domain** (currently `goldenretriever-web.vercel.app`).
 - **`apple-icon.png`** (favicon `icon.svg` is done; iOS touch icon is a PNG follow-up).
 - **Live "processing → ready" auto-refresh** in the Library (no manual reload).
