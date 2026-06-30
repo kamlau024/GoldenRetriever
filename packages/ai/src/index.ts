@@ -1,8 +1,9 @@
 import { embedMany, generateText } from "ai";
 import { env } from "@gr/config";
 import { resolveModels } from "./models.js";
+import { rankFromList, type RerankHit } from "./rerank.js";
 
-export interface RerankHit { index: number; score: number; }
+export type { RerankHit };
 
 export interface AiClient {
   embed(texts: string[]): Promise<number[][]>;
@@ -41,9 +42,25 @@ export function createAiClient(): AiClient {
       return { text, tokens: usage?.totalTokens ?? 0 };
     },
     async rerank(query, docs) {
-      // Cohere rerank via Gateway is added during infra setup; until then,
-      // fall back to identity ordering so the pipeline is exercisable.
-      return docs.map((_, index) => ({ index, score: 1 - index * 1e-6 }));
+      // LLM cross-encoder-style reranker: a fast model orders the fused candidates by relevance.
+      // Improves precision over RRF alone; falls back to the input order if the call fails.
+      if (docs.length <= 1) return docs.map((_, index) => ({ index, score: 1 }));
+      const cand = docs.slice(0, 16);
+      const passages = cand
+        .map((d, i) => `[${i + 1}] ${d.replace(/\s+/g, " ").slice(0, 400)}`)
+        .join("\n");
+      try {
+        const { text } = await generateText({
+          model: models.rerank,
+          prompt:
+            `Rank the passages by how well each helps answer the question, most relevant first.\n` +
+            `Reply with ONLY the passage numbers separated by commas (e.g. "3, 1, 5"); omit ` +
+            `passages that are not relevant.\n\nQuestion: ${query}\n\nPassages:\n${passages}`,
+        });
+        return rankFromList(text, cand.length);
+      } catch {
+        return docs.map((_, index) => ({ index, score: 1 - index * 1e-6 }));
+      }
     },
   };
 }

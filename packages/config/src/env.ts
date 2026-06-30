@@ -8,7 +8,8 @@ const schema = z.object({
   GR_GENERATION_MODEL: z.string().default("anthropic/claude-sonnet-4-6"),
   GR_TAGGING_MODEL: z.string().default("anthropic/claude-haiku-4-5"),
   GR_EMBEDDING_MODEL: z.string().default("openai/text-embedding-3-small"),
-  GR_RERANK_MODEL: z.string().default("cohere/rerank-3.5"),
+  // A fast generative model used as an LLM reranker (the Gateway has no native rerank endpoint).
+  GR_RERANK_MODEL: z.string().default("openai/gpt-4o-mini"),
 });
 
 export type Env = z.infer<typeof schema>;
