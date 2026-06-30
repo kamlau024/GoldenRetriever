@@ -1,9 +1,13 @@
 "use client";
 import { useState, type FormEvent } from "react";
+import { useUser } from "@clerk/nextjs";
+import { User } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import { DogAvatar } from "@/components/logo";
 
 export interface Citation { title: string | null; sourceUrl: string | null; }
 export interface Turn { id: string; role: string; content: string; citations?: Citation[]; }
@@ -34,31 +38,55 @@ function TypingDots() {
 // Citation chips get a distinct amber background so they stand out from the (muted) reply bubble.
 const CITE = "border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-200";
 
-export function Transcript({ messages }: { messages: Turn[] }) {
+function Avatar({ isUser, userAvatarUrl }: { isUser: boolean; userAvatarUrl?: string }) {
+  if (!isUser) {
+    return (
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-950/60">
+        <DogAvatar className="size-5" />
+      </span>
+    );
+  }
+  return userAvatarUrl ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={userAvatarUrl} alt="You" className="size-7 shrink-0 rounded-full object-cover" />
+  ) : (
+    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted">
+      <User className="size-4 text-muted-foreground" />
+    </span>
+  );
+}
+
+export function Transcript({ messages, userAvatarUrl }: { messages: Turn[]; userAvatarUrl?: string }) {
   return (
     <div className="space-y-4">
-      {messages.map((m) => (
-        <div key={m.id} className={m.role === "user" ? "text-right" : "text-left"}>
-          <p className="inline-block rounded-lg bg-muted px-3 py-2 text-left">
-            {m.role === "assistant" && m.content === "" ? <TypingDots /> : m.content}
-          </p>
-          {m.citations?.length ? (
-            <div className="mt-1 flex flex-wrap gap-1">
-              {m.citations.map((c, i) => {
-                const href = safeHref(c.sourceUrl);
-                const label = c.title ?? "source";
-                // Pasted text / uploads have no external URL → show a non-clickable chip
-                // instead of a dead link that opens a blank tab.
-                return href === "#" ? (
-                  <Badge key={i} variant="secondary" className={CITE} title="Saved text — no external source">{label}</Badge>
-                ) : (
-                  <Badge key={i} variant="secondary" className={CITE} render={<a href={href} target="_blank" rel="noopener noreferrer" className="underline" />}>{c.title ?? c.sourceUrl}</Badge>
-                );
-              })}
+      {messages.map((m) => {
+        const isUser = m.role === "user";
+        return (
+          <div key={m.id} className={cn("flex items-start gap-2", isUser && "flex-row-reverse")}>
+            <Avatar isUser={isUser} userAvatarUrl={userAvatarUrl} />
+            <div className={cn("min-w-0", isUser ? "text-right" : "text-left")}>
+              <p className="inline-block rounded-lg bg-muted px-3 py-2 text-left">
+                {m.role === "assistant" && m.content === "" ? <TypingDots /> : m.content}
+              </p>
+              {m.citations?.length ? (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {m.citations.map((c, i) => {
+                    const href = safeHref(c.sourceUrl);
+                    const label = c.title ?? "source";
+                    // Pasted text / uploads have no external URL → show a non-clickable chip
+                    // instead of a dead link that opens a blank tab.
+                    return href === "#" ? (
+                      <Badge key={i} variant="secondary" className={CITE} title="Saved text — no external source">{label}</Badge>
+                    ) : (
+                      <Badge key={i} variant="secondary" className={CITE} render={<a href={href} target="_blank" rel="noopener noreferrer" className="underline" />}>{c.title ?? c.sourceUrl}</Badge>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
-          ) : null}
-        </div>
-      ))}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -67,6 +95,7 @@ export function Chat({ kbId }: { kbId: string }) {
   const [messages, setMessages] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const { user } = useUser();
 
   async function send(e: FormEvent) {
     e.preventDefault();
@@ -113,7 +142,7 @@ export function Chat({ kbId }: { kbId: string }) {
   return (
     <Card className="p-4">
       <div className="space-y-4">
-        <Transcript messages={messages} />
+        <Transcript messages={messages} userAvatarUrl={user?.imageUrl ?? undefined} />
         <form onSubmit={send} className="flex gap-2">
           <Input className="flex-1" value={input} onChange={(e) => setInput(e.target.value)}
             placeholder="Ask your library…" />

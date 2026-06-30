@@ -15,6 +15,20 @@ export function LogoMark({ className }: { className?: string }) {
   );
 }
 
+/** Golden-retriever head in profile, facing right — used as the assistant's chat avatar. */
+export function DogAvatar({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 48 48" role="img" aria-label="GoldenRetriever" className={cn("text-primary", className)}>
+      <g fill="currentColor">
+        <path d="M13 16 C7 18 5 27 8 35 C9 40 15 40 16 33 C15 27 14 21 13 16Z" />
+        <path d="M12 29 C9 22 11 13 20 12 C26 11 30 14 32 18 C35 20 40 21 43 24 C45 25 45 28 42 29 C39 30 37 29 35 30 C33 32 31 33 28 33 C24 34 20 33 18 31 C16 30 14 30 12 29Z" />
+      </g>
+      <circle cx="29" cy="19" r="1.4" fill="var(--background)" />
+      <circle cx="43.5" cy="26" r="1.3" fill="#7a4a12" />
+    </svg>
+  );
+}
+
 export function Logo({ className }: { className?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-2 font-semibold tracking-tight", className)}>
