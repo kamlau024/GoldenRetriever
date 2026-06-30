@@ -118,6 +118,64 @@ export async function listDocuments(db: Db, kbId: string, limit = 100) {
   return docs.map((d) => ({ ...d, tags: byDoc.get(d.id) ?? [] }));
 }
 
+export interface ConversationSummary {
+  id: string;
+  title: string | null;
+  lastActivityAt: Date;
+  messageCount: number;
+}
+export interface ConversationDetail {
+  id: string;
+  title: string | null;
+  messages: { id: string; role: string; content: string; citations: unknown }[];
+}
+
+/** Conversations for (user, kb), newest-activity first, with message counts. Ordered by the latest
+ *  message time (falling back to the conversation's own createdAt) so revisited threads bubble up —
+ *  no `updated_at` column needed. */
+export async function listConversations(db: Db, userId: string, kbId: string): Promise<ConversationSummary[]> {
+  const rows = await db.execute<{ id: string; title: string | null; last_activity_at: Date; message_count: number }>(sql`
+    SELECT c.id, c.title,
+           COALESCE(MAX(m.created_at), c.created_at) AS last_activity_at,
+           COUNT(m.id)::int AS message_count
+    FROM conversations c
+    LEFT JOIN messages m ON m.conversation_id = c.id
+    WHERE c.user_id = ${userId} AND c.kb_id = ${kbId}
+    GROUP BY c.id
+    ORDER BY last_activity_at DESC`);
+  return [...rows].map((r) => ({
+    id: r.id,
+    title: r.title,
+    lastActivityAt: new Date(r.last_activity_at),
+    messageCount: Number(r.message_count),
+  }));
+}
+
+/** A conversation and its messages — but only if `userId` owns it; otherwise null (no info leak). */
+export async function getConversationForUser(db: Db, conversationId: string, userId: string): Promise<ConversationDetail | null> {
+  const conv = await db.select({ id: conversations.id, title: conversations.title })
+    .from(conversations)
+    .where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)));
+  if (!conv[0]) return null;
+  const msgs = await db.select({
+    id: messages.id, role: messages.role, content: messages.content, citations: messages.citations,
+  }).from(messages).where(eq(messages.conversationId, conversationId)).orderBy(messages.createdAt);
+  return { id: conv[0].id, title: conv[0].title, messages: msgs };
+}
+
+/** Delete a conversation (messages cascade via FK) — only if `userId` owns it. Returns whether a row
+ *  was removed. */
+export async function deleteConversation(db: Db, conversationId: string, userId: string): Promise<boolean> {
+  const rows = await db.delete(conversations)
+    .where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)))
+    .returning({ id: conversations.id });
+  return rows.length > 0;
+}
+
+export async function setConversationTitle(db: Db, conversationId: string, title: string): Promise<void> {
+  await db.update(conversations).set({ title }).where(eq(conversations.id, conversationId));
+}
+
 export async function createConversation(db: Db, c: { kbId: string; userId: string; title?: string }) {
   const convId = id("conv");
   await db.insert(conversations).values({ id: convId, kbId: c.kbId, userId: c.userId, title: c.title });
