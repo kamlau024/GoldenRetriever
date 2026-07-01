@@ -21,5 +21,8 @@ export function createMockAiClient(): AiClient {
     async rerank(_query, docs): Promise<RerankHit[]> {
       return docs.map((_, index) => ({ index, score: 1 - index * 1e-6 }));
     },
+    async titleConversation(firstMessage) {
+      return firstMessage.slice(0, 60);
+    },
   };
 }

@@ -2,6 +2,7 @@ import { embedMany, generateText } from "ai";
 import { env } from "@gr/config";
 import { resolveModels } from "./models.js";
 import { rankFromList, type RerankHit } from "./rerank.js";
+import { cleanTitle } from "./title.js";
 
 export type { RerankHit };
 
@@ -12,6 +13,8 @@ export interface AiClient {
   /** Grounded answer over numbered context blocks. */
   answer(question: string, contexts: string[]): Promise<{ text: string; tokens: number }>;
   rerank(query: string, docs: string[]): Promise<RerankHit[]>;
+  /** A short (≤6-word) title for a conversation, from its opening question. */
+  titleConversation(firstMessage: string): Promise<string>;
 }
 
 export function createAiClient(): AiClient {
@@ -61,6 +64,15 @@ export function createAiClient(): AiClient {
       } catch {
         return docs.map((_, index) => ({ index, score: 1 - index * 1e-6 }));
       }
+    },
+    async titleConversation(firstMessage) {
+      const { text } = await generateText({
+        model: models.tagging,
+        prompt:
+          `Write a concise title (at most 6 words, no quotes, no trailing punctuation) for a ` +
+          `conversation that begins with this question:\n\n${firstMessage.slice(0, 500)}`,
+      });
+      return cleanTitle(text);
     },
   };
 }
