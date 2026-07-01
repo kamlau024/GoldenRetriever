@@ -123,7 +123,6 @@ export function Chat({ kbId }: { kbId: string }) {
   }
 
   async function selectConversation(id: string) {
-    setHistoryOpen(false);
     try {
       const res = await fetch(`/api/conversations/${id}`);
       if (!res.ok) throw new Error();
@@ -139,6 +138,7 @@ export function Chat({ kbId }: { kbId: string }) {
           : undefined,
       })));
       setConversationId(id);
+      setHistoryOpen(false);
     } catch {
       toast.error("Couldn't open that conversation");
     }

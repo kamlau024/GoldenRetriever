@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { Transcript, safeHref } from "./chat.js";
-import { vi, beforeEach, afterEach } from "vitest";
+import { vi, afterEach } from "vitest";
 import { fireEvent, waitFor } from "@testing-library/react";
 vi.mock("@clerk/nextjs", () => ({ useUser: () => ({ user: null }) }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
