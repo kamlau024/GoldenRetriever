@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, desc, inArray, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/postgres-js";
-import { users, knowledgeBases, kbMembers, documents, chunks, conversations, messages, tags, documentTags } from "./schema.js";
+import { users, knowledgeBases, kbMembers, documents, chunks, conversations, messages, tags, documentTags, memories } from "./schema.js";
 import type { NewChunk } from "./schema.js";
 
 type Db = ReturnType<typeof drizzle>;
@@ -204,4 +204,72 @@ export async function deleteDocument(db: Db, docId: string, kbId: string): Promi
     .where(and(eq(documents.id, docId), eq(documents.kbId, kbId)))
     .returning({ id: documents.id });
   return rows.length > 0;
+}
+
+export interface MemoryRow {
+  id: string; content: string; kind: string;
+  sourceConversationId: string | null; createdAt: Date; updatedAt: Date;
+}
+
+/** The user's memory toggle + the plain fact contents for prompt injection. */
+export async function getMemoryState(db: Db, userId: string): Promise<{ enabled: boolean; facts: string[] }> {
+  const u = await db.select({ enabled: users.memoryEnabled }).from(users).where(eq(users.id, userId));
+  const rows = await db.select({ content: memories.content }).from(memories)
+    .where(eq(memories.userId, userId)).orderBy(memories.createdAt);
+  return { enabled: u[0]?.enabled ?? true, facts: rows.map((r) => r.content) };
+}
+
+/** Full memory rows for the settings UI, newest first. */
+export async function listMemories(db: Db, userId: string): Promise<MemoryRow[]> {
+  return db.select({
+    id: memories.id, content: memories.content, kind: memories.kind,
+    sourceConversationId: memories.sourceConversationId,
+    createdAt: memories.createdAt, updatedAt: memories.updatedAt,
+  }).from(memories).where(eq(memories.userId, userId)).orderBy(desc(memories.createdAt));
+}
+
+/** Insert a fact unless a near-duplicate (cosine distance < maxDistance) already exists for the user.
+ *  Returns whether a row was inserted. */
+export async function insertMemoryIfNovel(
+  db: Db,
+  m: { userId: string; content: string; kind: string; embedding: number[]; sourceConversationId: string | null },
+  maxDistance = 0.15,
+): Promise<boolean> {
+  const vec = `[${m.embedding.join(",")}]`;
+  const dup = await db.execute<{ one: number }>(sql`
+    SELECT 1 AS one FROM memories
+    WHERE user_id = ${m.userId} AND embedding IS NOT NULL
+      AND embedding <=> ${vec}::vector < ${maxDistance}
+    LIMIT 1`);
+  if ([...dup].length > 0) return false;
+  await db.insert(memories).values({
+    id: id("mem"), userId: m.userId, content: m.content, kind: m.kind,
+    sourceConversationId: m.sourceConversationId, embedding: m.embedding,
+  });
+  return true;
+}
+
+/** Edit a memory's content (and re-embed) — owner only. */
+export async function updateMemory(db: Db, id: string, userId: string, content: string, embedding: number[]): Promise<boolean> {
+  const rows = await db.update(memories)
+    .set({ content, embedding, updatedAt: new Date() })
+    .where(and(eq(memories.id, id), eq(memories.userId, userId)))
+    .returning({ id: memories.id });
+  return rows.length > 0;
+}
+
+/** Delete a memory — owner only. */
+export async function deleteMemory(db: Db, id: string, userId: string): Promise<boolean> {
+  const rows = await db.delete(memories)
+    .where(and(eq(memories.id, id), eq(memories.userId, userId)))
+    .returning({ id: memories.id });
+  return rows.length > 0;
+}
+
+export async function clearMemories(db: Db, userId: string): Promise<void> {
+  await db.delete(memories).where(eq(memories.userId, userId));
+}
+
+export async function setMemoryEnabled(db: Db, userId: string, enabled: boolean): Promise<void> {
+  await db.update(users).set({ memoryEnabled: enabled }).where(eq(users.id, userId));
 }
