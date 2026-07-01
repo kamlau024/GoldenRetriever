@@ -3,7 +3,7 @@
 export function parseMemories(reply: string): string[] {
   return reply
     .split("\n")
-    .map((l) => l.replace(/^[-*\d.)\s]+/, "").trim())
+    .map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "").trim())
     .filter((l) => l.length > 0 && l.toUpperCase() !== "NONE")
     .slice(0, 3);
 }

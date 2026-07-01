@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createDb } from "./client.js";
-import { createUser } from "./queries.js";
 import {
-  getMemoryState, listMemories, insertMemoryIfNovel, updateMemory,
+  createUser, getMemoryState, listMemories, insertMemoryIfNovel, updateMemory,
   deleteMemory, clearMemories, setMemoryEnabled,
 } from "./queries.js";
 import { memories, users } from "./schema.js";
