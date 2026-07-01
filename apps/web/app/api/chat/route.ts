@@ -21,9 +21,11 @@ export async function POST(req: NextRequest) {
     .where(and(eq(schema.kbMembers.kbId, kbId), eq(schema.kbMembers.userId, principal.userId)));
   if (!membership[0]) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
+  let priorMessages: { role: string; content: string }[] = [];
   if (conversationId) {
     const owned = await getConversationForUser(db, conversationId, principal.userId);
     if (!owned) return NextResponse.json({ error: "not found" }, { status: 404 });
+    priorMessages = owned.messages;
   }
 
   const isNew = !conversationId;
@@ -46,7 +48,7 @@ export async function POST(req: NextRequest) {
   }));
   const result = streamText({
     model,
-    prompt: buildChatPrompt({ question: message, sources: hits.map((h) => h.content) }),
+    prompt: buildChatPrompt({ question: message, sources: hits.map((h) => h.content), history: priorMessages }),
     onFinish: async ({ text, totalUsage }) => {
       await appendMessage(db, {
         conversationId: convId, role: "assistant", content: text, citations,

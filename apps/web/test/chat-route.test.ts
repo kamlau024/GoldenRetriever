@@ -19,24 +19,30 @@ let kbId: string, token: string;
 // We cast doStream to any to avoid fighting TypeScript's structural-union narrowing
 // on the chunk array — the runtime shape is correct and tests verify the behavior.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const modelSaying = (text: string) => new MockLanguageModelV3({
-  doStream: (async () => ({
-    stream: simulateReadableStream({
-      chunks: [
-        { type: "text-start" as const, id: "t1" },
-        { type: "text-delta" as const, id: "t1", delta: text },
-        { type: "text-end" as const, id: "t1" },
-        {
-          type: "finish" as const,
-          finishReason: "stop" as const,
-          usage: {
-            inputTokens: { total: 5, noCache: 5, cacheRead: undefined, cacheWrite: undefined },
-            outputTokens: { total: 5, text: 5, reasoning: undefined },
-          },
+const streamChunks = (text: string): any => ({
+  stream: simulateReadableStream({
+    chunks: [
+      { type: "text-start" as const, id: "t1" },
+      { type: "text-delta" as const, id: "t1", delta: text },
+      { type: "text-end" as const, id: "t1" },
+      {
+        type: "finish" as const,
+        finishReason: "stop" as const,
+        usage: {
+          inputTokens: { total: 5, noCache: 5, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 5, text: 5, reasoning: undefined },
         },
-      ],
-    }),
-  })) as any,
+      },
+    ],
+  }),
+});
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const modelSaying = (text: string) => new MockLanguageModelV3({ doStream: (async () => streamChunks(text)) as any });
+// A model that records the prompt it was given, so a test can assert on prompt contents.
+let capturedPrompt = "";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const capturingModel = (text: string) => new MockLanguageModelV3({
+  doStream: (async (opts: { prompt: unknown }) => { capturedPrompt = JSON.stringify(opts.prompt); return streamChunks(text); }) as any,
 });
 const retrieverReturning = (chunks: RankedChunk[]): Retriever => ({ retrieve: async () => chunks });
 const chunk = (content: string): RankedChunk => ({
@@ -73,6 +79,22 @@ describe("POST /api/chat", () => {
     expect(convId).toBeTruthy();
     const msgs = await getMessages(db, convId!);
     expect(msgs.map((m) => m.role)).toEqual(["user", "assistant"]);
+  });
+
+  it("includes the thread's prior turns in the prompt (within-conversation memory)", async () => {
+    __setChatDeps({ retriever: retrieverReturning([chunk("Tawaraya is a ryokan in Kyoto.")]), model: capturingModel("Stay at Tawaraya [1].") });
+    const first = await post({ kbId, message: "where should I stay in Kyoto?" });
+    const convId = first.headers.get("x-conversation-id")!;
+    await first.text();
+
+    __setChatDeps({ retriever: retrieverReturning([chunk("Tawaraya has tatami rooms.")]), model: capturingModel("It does [1].") });
+    const second = await post({ kbId, conversationId: convId, message: "does it have tatami?" });
+    await second.text();
+
+    expect(capturedPrompt).toContain("Earlier in this conversation:");
+    expect(capturedPrompt).toContain("where should I stay in Kyoto?"); // prior user turn
+    expect(capturedPrompt).toContain("Stay at Tawaraya");              // prior assistant turn
+    expect(capturedPrompt).toContain("does it have tatami?");          // current question
   });
 
   it("refuses honestly when nothing relevant is retrieved", async () => {
