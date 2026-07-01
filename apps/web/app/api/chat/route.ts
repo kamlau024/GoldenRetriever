@@ -4,7 +4,8 @@ import { streamText } from "ai";
 import { createDb, schema } from "@gr/db";
 import { createConversation, appendMessage, setConversationTitle, getConversationForUser } from "@gr/db/queries";
 import { resolveAuth } from "../../../lib/clerk-auth.js";
-import { resolveChatDeps, groundedPrompt, REFUSAL, firstWords } from "../../../lib/chat-service.js";
+import { resolveChatDeps, firstWords } from "../../../lib/chat-service.js";
+import { buildChatPrompt, REFUSAL } from "../../../lib/chat-prompt.js";
 import { encodeCitations } from "../../../lib/citations.js";
 
 export async function POST(req: NextRequest) {
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
   }));
   const result = streamText({
     model,
-    prompt: groundedPrompt(message, hits.map((h) => h.content)),
+    prompt: buildChatPrompt({ question: message, sources: hits.map((h) => h.content) }),
     onFinish: async ({ text, totalUsage }) => {
       await appendMessage(db, {
         conversationId: convId, role: "assistant", content: text, citations,
