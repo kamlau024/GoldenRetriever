@@ -17,6 +17,12 @@ Living list of outstanding work, so nothing planned-but-skipped gets lost. Updat
   async worker / future re-ingestion path uses it (upload processes in-process), so it's untested.
 - **`documents.added_by` has no `onDelete` cascade** — deleting a user is blocked by their documents
   (surfaced during a cleanup). Add a cascade or null-on-delete before any user-deletion flow.
+- **Conversation ownership scopes by `userId`, not `kbId`** — `getConversationForUser` (used by the chat
+  route's `conversationId` check and the `/api/conversations` endpoints) checks only `userId`. Harmless
+  today (one personal KB per user, so `conversation.kbId` always equals the membership-gated request
+  `kbId`), but once **shared KBs** land (Stage 1) a member could append/continue a thread under a
+  different KB than it belongs to. Add `kbId` to the predicate (or assert `owned.kbId === kbId` in the
+  chat route) when KBs become shareable.
 
 ### 4. Tests / CI
 - **GitHub Actions CI** (run `scripts/test.sh` + typecheck on push).
