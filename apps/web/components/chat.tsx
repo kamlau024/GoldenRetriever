@@ -1,7 +1,10 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import { useUser } from "@clerk/nextjs";
-import { User } from "lucide-react";
+import { User, History, Plus } from "lucide-react";
+import { toast } from "sonner";
+import { Sheet, SheetTrigger, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { ChatHistory } from "@/components/chat-history";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -109,7 +112,37 @@ export function Chat({ kbId }: { kbId: string }) {
   const [messages, setMessages] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const { user } = useUser();
+
+  function newChat() {
+    setMessages([]);
+    setConversationId(null);
+    setHistoryOpen(false);
+  }
+
+  async function selectConversation(id: string) {
+    setHistoryOpen(false);
+    try {
+      const res = await fetch(`/api/conversations/${id}`);
+      if (!res.ok) throw new Error();
+      const detail = await res.json() as {
+        id: string;
+        messages: { id: string; role: string; content: string; citations: unknown }[];
+      };
+      setMessages(detail.messages.map((m) => ({
+        id: m.id, role: m.role, content: m.content,
+        citations: Array.isArray(m.citations)
+          ? (m.citations as { title: string | null; sourceUrl: string | null }[])
+              .map((c) => ({ title: c.title, sourceUrl: c.sourceUrl }))
+          : undefined,
+      })));
+      setConversationId(id);
+    } catch {
+      toast.error("Couldn't open that conversation");
+    }
+  }
 
   async function send(e: FormEvent) {
     e.preventDefault();
@@ -126,9 +159,11 @@ export function Chat({ kbId }: { kbId: string }) {
     try {
       const res = await fetch("/api/chat", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ kbId, message }),
+        body: JSON.stringify(conversationId ? { kbId, conversationId, message } : { kbId, message }),
       });
       if (!res.ok) { setAssistant({ content: ERR }); return; }
+      const newConvId = res.headers.get("x-conversation-id");
+      if (newConvId && !conversationId) setConversationId(newConvId);
       const { parseCitations, citedOnly } = await import("../lib/citations.js");
       const allCitations = parseCitations(res.headers.get("x-citations"))
         .map((c) => ({ title: c.title, sourceUrl: c.sourceUrl }));
@@ -141,10 +176,7 @@ export function Chat({ kbId }: { kbId: string }) {
         acc += decoder.decode(value, { stream: true });
         setAssistant({ content: acc });
       }
-      // An empty stream means generation failed mid-flight (e.g. a rate-limit/gateway error
-      // that the server couldn't surface) — show a message instead of an empty bubble.
       if (!acc.trim()) { setAssistant({ content: ERR }); return; }
-      // Show only the sources the answer actually cited as [n], not every retrieved chunk.
       setAssistant({ citations: citedOnly(acc, allCitations) });
     } catch {
       setAssistant({ content: "⚠️ Network error — please try again." });
@@ -156,6 +188,22 @@ export function Chat({ kbId }: { kbId: string }) {
   return (
     <Card className="p-4">
       <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+            <SheetTrigger render={<Button variant="outline" size="sm"><History className="size-4" /> History</Button>} />
+            <SheetContent side="left">
+              <SheetTitle>Conversations</SheetTitle>
+              <ChatHistory
+                open={historyOpen}
+                activeId={conversationId}
+                onSelect={selectConversation}
+                onNew={newChat}
+                onDeletedActive={newChat}
+              />
+            </SheetContent>
+          </Sheet>
+          <Button variant="ghost" size="sm" onClick={newChat}><Plus className="size-4" /> New chat</Button>
+        </div>
         <Transcript messages={messages} userAvatarUrl={user?.imageUrl ?? undefined} />
         <form onSubmit={send} className="flex gap-2">
           <Input className="flex-1" value={input} onChange={(e) => setInput(e.target.value)}
