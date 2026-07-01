@@ -1,5 +1,5 @@
 import {
-  pgTable, text, timestamp, integer, jsonb, real,
+  pgTable, text, timestamp, integer, jsonb, real, boolean,
   vector, index, primaryKey, customType,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -12,6 +12,7 @@ export const users = pgTable("users", {
   email: text("email").notNull(),
   name: text("name"),
   imageUrl: text("image_url"),
+  memoryEnabled: boolean("memory_enabled").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -123,7 +124,20 @@ export const messages = pgTable("messages", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const memories = pgTable("memories", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  content: text("content").notNull(),
+  kind: text("kind").notNull().default("fact"), // 'fact' | 'preference'
+  sourceConversationId: text("source_conversation_id").references(() => conversations.id, { onDelete: "set null" }),
+  embedding: vector("embedding", { dimensions: 1536 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("memories_user_idx").on(t.userId)]);
+
 export type Document = typeof documents.$inferSelect;
 export type NewDocument = typeof documents.$inferInsert;
 export type Chunk = typeof chunks.$inferSelect;
 export type NewChunk = typeof chunks.$inferInsert;
+export type Memory = typeof memories.$inferSelect;
+export type NewMemory = typeof memories.$inferInsert;
