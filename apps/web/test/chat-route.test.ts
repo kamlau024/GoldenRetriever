@@ -88,4 +88,40 @@ describe("POST /api/chat", () => {
     }));
     expect(res.status).toBe(401);
   });
+
+  it("titles a new conversation from the model and persists it", async () => {
+    __setChatDeps({
+      retriever: retrieverReturning([chunk("Tawaraya is a ryokan in Kyoto.")]),
+      model: modelSaying("Stay at Tawaraya [1]."),
+      titleConversation: async () => "Kyoto stay",
+    });
+    const res = await post({ kbId, message: "where to stay in Kyoto?" });
+    const convId = res.headers.get("x-conversation-id")!;
+    await res.text(); // drain the stream so onFinish (and titling) runs
+    const { getConversationForUser } = await import("@gr/db/queries");
+    expect((await getConversationForUser(db, convId, "u_chat_r"))!.title).toBe("Kyoto stay");
+  });
+
+  it("falls back to a snippet title when titling throws", async () => {
+    __setChatDeps({
+      retriever: retrieverReturning([chunk("Bread needs flour, water, salt, yeast.")]),
+      model: modelSaying("Mix and bake [1]."),
+      titleConversation: async () => { throw new Error("model down"); },
+    });
+    const res = await post({ kbId, message: "how do I bake no knead bread at home" });
+    const convId = res.headers.get("x-conversation-id")!;
+    await res.text();
+    const { getConversationForUser } = await import("@gr/db/queries");
+    expect((await getConversationForUser(db, convId, "u_chat_r"))!.title).toBe("how do I bake no knead");
+  });
+
+  it("404s when continuing a conversation the caller does not own", async () => {
+    const { createUser, createConversation, getOrCreatePersonalKb } = await import("@gr/db/queries");
+    const otherUid = await createUser(db, { id: "u_chat_other", email: "co@cr.dev" });
+    const otherKb = await getOrCreatePersonalKb(db, otherUid);
+    const foreignConv = await createConversation(db, { kbId: otherKb, userId: otherUid });
+    __setChatDeps({ retriever: retrieverReturning([chunk("x")]), model: modelSaying("nope") });
+    const res = await post({ kbId, conversationId: foreignConv, message: "sneaky" });
+    expect(res.status).toBe(404);
+  });
 });

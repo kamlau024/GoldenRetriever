@@ -5,11 +5,26 @@ import { createAiClient } from "@gr/ai";
 import { env } from "@gr/config";
 
 type Db = ReturnType<typeof drizzle>;
-export interface ChatDeps { retriever: Retriever; model: LanguageModel; }
+export interface ChatDeps {
+  retriever: Retriever;
+  model: LanguageModel;
+  titleConversation?: (firstMessage: string) => Promise<string>;
+}
 let override: ChatDeps | null = null;
 export function __setChatDeps(d: ChatDeps | null) { override = d; }
 export function resolveChatDeps(db: Db): ChatDeps {
-  return override ?? { retriever: new HybridRetriever(db, createAiClient()), model: env.GR_GENERATION_MODEL };
+  if (override) return override;
+  const ai = createAiClient();
+  return {
+    retriever: new HybridRetriever(db, ai),
+    model: env.GR_GENERATION_MODEL,
+    titleConversation: (m) => ai.titleConversation(m),
+  };
+}
+
+/** First ~6 words of a message, capped — the fallback title when LLM titling fails. */
+export function firstWords(text: string, max = 60): string {
+  return text.trim().split(/\s+/).slice(0, 6).join(" ").slice(0, max);
 }
 
 export const REFUSAL = "I don't have anything saved about that.";

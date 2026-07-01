@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { streamText } from "ai";
 import { createDb, schema } from "@gr/db";
-import { createConversation, appendMessage } from "@gr/db/queries";
+import { createConversation, appendMessage, setConversationTitle, getConversationForUser } from "@gr/db/queries";
 import { resolveAuth } from "../../../lib/clerk-auth.js";
-import { resolveChatDeps, groundedPrompt, REFUSAL } from "../../../lib/chat-service.js";
+import { resolveChatDeps, groundedPrompt, REFUSAL, firstWords } from "../../../lib/chat-service.js";
 import { encodeCitations } from "../../../lib/citations.js";
 
 export async function POST(req: NextRequest) {
@@ -20,10 +20,16 @@ export async function POST(req: NextRequest) {
     .where(and(eq(schema.kbMembers.kbId, kbId), eq(schema.kbMembers.userId, principal.userId)));
   if (!membership[0]) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
+  if (conversationId) {
+    const owned = await getConversationForUser(db, conversationId, principal.userId);
+    if (!owned) return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+
+  const isNew = !conversationId;
   const convId = conversationId ?? await createConversation(db, { kbId, userId: principal.userId });
   await appendMessage(db, { conversationId: convId, role: "user", content: message });
 
-  const { retriever, model } = resolveChatDeps(db);
+  const { retriever, model, titleConversation } = resolveChatDeps(db);
   const hits = await retriever.retrieve(kbId, message);
 
   if (hits.length === 0) {
@@ -45,6 +51,12 @@ export async function POST(req: NextRequest) {
         conversationId: convId, role: "assistant", content: text, citations,
         tokens: totalUsage?.totalTokens ?? totalUsage?.outputTokens,
       });
+      if (isNew && titleConversation) {
+        let title: string;
+        try { title = await titleConversation(message); }
+        catch { title = firstWords(message); }
+        await setConversationTitle(db, convId, title || firstWords(message));
+      }
     },
   });
   return result.toTextStreamResponse({ headers: { "x-conversation-id": convId, "x-citations": encodeCitations(citations) } });
