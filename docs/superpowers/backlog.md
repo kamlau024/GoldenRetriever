@@ -50,6 +50,13 @@ Living list of outstanding work, so nothing planned-but-skipped gets lost. Updat
 - **`apple-icon.png`** (favicon `icon.svg` is done; iOS touch icon is a PNG follow-up).
 - **Live "processing → ready" auto-refresh** in the Library (no manual reload).
 - **GR_TAGGING_MODEL** is `gpt-4o-mini`; revisit now that paid credits unlock better models.
+- **Memory Phase 2 — polish follow-ups** *(deferred from the final review, all Minor)* — disable the
+  Settings→Memory toggle during its in-flight PATCH (double-click race) + add a rollback-on-failure test;
+  in `PATCH /api/memories/[id]`, check ownership before re-embedding (a non-owner forged id wastes one
+  embed before the 404); add 401 tests for the non-GET memory handlers; regenerate the drizzle meta
+  journal/snapshot (`0001_memory.sql` was hand-written, so `drizzle-kit generate` would re-emit
+  `memories`); add an HNSW index on `memories.embedding` if a user's fact count ever grows large
+  (dedup currently seq-scans per user — fine at tens–hundreds).
 
 ## Future stages (roadmap — `specs/2026-06-14-goldenretriever-architecture-design.md`)
 - **Conversational memory** *(design in progress, 2026-06-30 — spec to land in `specs/`)* — two layers:
