@@ -8,7 +8,7 @@ const URL = process.env.DATABASE_URL ?? "postgres://gr:gr@localhost:5433/gr_test
 const { db, sql } = createDb(URL);
 
 beforeAll(async () => { await createUser(db, { id: "u_mem_schema", email: "ms@m.dev" }); });
-afterAll(async () => { await sql.end(); });
+afterAll(async () => { await db.delete(users).where(eq(users.id, "u_mem_schema")); await sql.end(); });
 
 describe("memories schema", () => {
   it("stores a memory row and defaults users.memory_enabled to true", async () => {
