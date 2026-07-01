@@ -24,5 +24,6 @@ export function createMockAiClient(): AiClient {
     async titleConversation(firstMessage) {
       return firstMessage.slice(0, 60);
     },
+    async extractMemories() { return []; },
   };
 }

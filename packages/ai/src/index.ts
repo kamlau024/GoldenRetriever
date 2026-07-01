@@ -3,6 +3,7 @@ import { env } from "@gr/config";
 import { resolveModels } from "./models.js";
 import { rankFromList, type RerankHit } from "./rerank.js";
 import { cleanTitle } from "./title.js";
+import { parseMemories } from "./memory.js";
 
 export type { RerankHit };
 
@@ -15,6 +16,8 @@ export interface AiClient {
   rerank(query: string, docs: string[]): Promise<RerankHit[]>;
   /** A short (≤6-word) title for a conversation, from its opening question. */
   titleConversation(firstMessage: string): Promise<string>;
+  /** 0-3 durable facts/preferences about the user, distilled from one exchange. */
+  extractMemories(userMessage: string, reply: string): Promise<string[]>;
 }
 
 export function createAiClient(): AiClient {
@@ -73,6 +76,17 @@ export function createAiClient(): AiClient {
           `conversation that begins with this question:\n\n${firstMessage.slice(0, 500)}`,
       });
       return cleanTitle(text);
+    },
+    async extractMemories(userMessage, reply) {
+      const { text } = await generateText({
+        model: models.tagging,
+        prompt:
+          `From this exchange, extract 0-3 durable facts or preferences ABOUT THE USER worth ` +
+          `remembering long-term (their role, projects, stable preferences). Ignore transient or ` +
+          `topical details. One per line, no numbering. If nothing durable, reply exactly NONE.\n\n` +
+          `User: ${userMessage.slice(0, 1000)}\nAssistant: ${reply.slice(0, 1000)}`,
+      });
+      return parseMemories(text);
     },
   };
 }
