@@ -6,13 +6,16 @@ import {
   deleteMemory, clearMemories, setMemoryEnabled,
 } from "./queries.js";
 import { memories, users } from "./schema.js";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 const URL = process.env.DATABASE_URL ?? "postgres://gr:gr@localhost:5433/gr_test";
 const { db, sql } = createDb(URL);
 
 beforeAll(async () => { await createUser(db, { id: "u_mem_schema", email: "ms@m.dev" }); });
-afterAll(async () => { await db.delete(users).where(eq(users.id, "u_mem_schema")); await sql.end(); });
+afterAll(async () => {
+  await db.delete(users).where(inArray(users.id, ["u_mem_schema", "u_mem_q", "u_mem_state", "u_mem_own", "u_mem_own2"]));
+  await sql.end();
+});
 
 // helper: a unit vector pointing at one axis, so two facts can be made near/far
 const axis = (i: number) => { const v = new Array(1536).fill(0); v[i] = 1; return v as number[]; };
