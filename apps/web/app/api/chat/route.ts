@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { streamText } from "ai";
 import { createDb, schema } from "@gr/db";
-import { createConversation, appendMessage, setConversationTitle, getConversationForUser } from "@gr/db/queries";
+import { createConversation, appendMessage, setConversationTitle, getConversationForUser, getMemoryState } from "@gr/db/queries";
 import { resolveAuth } from "../../../lib/clerk-auth.js";
 import { resolveChatDeps, firstWords } from "../../../lib/chat-service.js";
 import { buildChatPrompt, REFUSAL } from "../../../lib/chat-prompt.js";
@@ -32,7 +32,8 @@ export async function POST(req: NextRequest) {
   const convId = conversationId ?? await createConversation(db, { kbId, userId: principal.userId });
   await appendMessage(db, { conversationId: convId, role: "user", content: message });
 
-  const { retriever, model, titleConversation } = resolveChatDeps(db);
+  const { retriever, model, titleConversation, remember } = resolveChatDeps(db);
+  const memory = await getMemoryState(db, principal.userId);
   const hits = await retriever.retrieve(kbId, message);
 
   if (hits.length === 0) {
@@ -48,7 +49,12 @@ export async function POST(req: NextRequest) {
   }));
   const result = streamText({
     model,
-    prompt: buildChatPrompt({ question: message, sources: hits.map((h) => h.content), history: priorMessages }),
+    prompt: buildChatPrompt({
+      question: message,
+      sources: hits.map((h) => h.content),
+      history: priorMessages,
+      facts: memory.enabled ? memory.facts : [],
+    }),
     onFinish: async ({ text, totalUsage }) => {
       await appendMessage(db, {
         conversationId: convId, role: "assistant", content: text, citations,
@@ -59,6 +65,10 @@ export async function POST(req: NextRequest) {
         try { title = await titleConversation(message); }
         catch { title = firstWords(message); }
         await setConversationTitle(db, convId, title || firstWords(message));
+      }
+      if (memory.enabled && remember) {
+        try { await remember({ userId: principal.userId, userMessage: message, reply: text, conversationId: convId }); }
+        catch { /* best-effort; never break the reply */ }
       }
     },
   });

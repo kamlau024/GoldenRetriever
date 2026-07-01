@@ -146,4 +146,29 @@ describe("POST /api/chat", () => {
     const res = await post({ kbId, conversationId: foreignConv, message: "sneaky" });
     expect(res.status).toBe(404);
   });
+
+  it("injects the user's facts into the prompt when memory is enabled", async () => {
+    const { insertMemoryIfNovel } = await import("@gr/db/queries");
+    await insertMemoryIfNovel(db, { userId: "u_chat_r", content: "is a product manager", kind: "fact", embedding: new Array(1536).fill(0).map((_, i) => (i === 7 ? 1 : 0)), sourceConversationId: null });
+    __setChatDeps({ retriever: retrieverReturning([chunk("Roadmapping tips.")]), model: capturingModel("Sure [1].") });
+    await (await post({ kbId, message: "help me plan" })).text();
+    expect(capturedPrompt).toContain("About you");
+    expect(capturedPrompt).toContain("is a product manager");
+  });
+
+  it("calls remember on a new exchange only when memory is enabled", async () => {
+    const { setMemoryEnabled } = await import("@gr/db/queries");
+    let calls = 0;
+    const deps = { retriever: retrieverReturning([chunk("x")]), model: modelSaying("y [1]."), remember: async () => { calls++; } };
+    __setChatDeps(deps);
+    await (await post({ kbId, message: "remember this" })).text();
+    expect(calls).toBe(1);
+
+    await setMemoryEnabled(db, "u_chat_r", false);
+    __setChatDeps(deps);
+    await (await post({ kbId, message: "do not remember" })).text();
+    expect(calls).toBe(1); // unchanged — extraction skipped while disabled
+
+    await setMemoryEnabled(db, "u_chat_r", true); // restore for other tests
+  });
 });
