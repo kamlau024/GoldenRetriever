@@ -91,7 +91,7 @@ export function DocTable({ docs, busy, onDelete }: { docs: LibraryDoc[]; busy: s
             <TableRow key={d.id}>
               <TableCell className="font-medium">
                 <span className="flex items-center gap-2"><KindIcon kind={d.kind} /><TitleLink doc={d} /></span>
-                <span className="mt-1 block"><Tags tags={d.tags} /></span>
+                {d.tags.length ? <span className="mt-1 block"><Tags tags={d.tags} /></span> : null}
               </TableCell>
               <TableCell><Badge className={cn("border-transparent", statusBadgeClass(d.status))}>{statusLabel(d.status)}</Badge></TableCell>
               <TableCell><Badge variant="secondary">{sourceLabel(d.captureMode)}</Badge></TableCell>
