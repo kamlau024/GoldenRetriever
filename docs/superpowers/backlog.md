@@ -62,6 +62,11 @@ Living list of outstanding work, so nothing planned-but-skipped gets lost. Updat
   DOM and keyboard tab order at desktop widths, so a keyboard user can still focus an invisible "Open
   menu" button. Fix: conditionally render the trigger, or add `tabIndex={-1}` + `aria-hidden` at `sm+`
   (a CSS-only `sm:hidden` can't remove it from the a11y tree).
+- **Citations — follow-ups** *(deferred from the citation-popover final review, Minor)* — extract
+  `safeHref` out of `components/chat.tsx` into a shared `lib/` util (three components + a cyclic
+  `citation.tsx ↔ chat.tsx` import depend on it — safe today, but fragile); and monitor the
+  `x-citations` response-header size in production (≤8 chunks × 500-char snippets can approach the ~8 KB
+  header limit for replies citing many long-URL sources — add a citation-count/title cap if it recurs).
 
 ## Future stages (roadmap — `specs/2026-06-14-goldenretriever-architecture-design.md`)
 - **Conversational memory** *(design in progress, 2026-06-30 — spec to land in `specs/`)* — two layers:

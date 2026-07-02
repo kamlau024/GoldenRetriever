@@ -24,7 +24,8 @@ function walk(node: HastNode): void {
         else out.push({ type: "text", value: part });
       }
     } else {
-      walk(child);
+      // Don't rewrite [n] inside code/pre — a citation marker there would be wrong.
+      if (child.tagName !== "code" && child.tagName !== "pre") walk(child);
       out.push(child);
     }
   }

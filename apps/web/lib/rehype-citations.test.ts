@@ -19,4 +19,11 @@ describe("rehypeCitations", () => {
     const strong = run(tree).children[0].children[0];
     expect(strong.children.map((c: { tagName?: string; type: string }) => c.tagName ?? c.type)).toEqual(["text", "cite"]);
   });
+  it("does not rewrite [n] inside code or pre elements", () => {
+    const tree = { type: "root", children: [{ type: "element", tagName: "p", children: [
+      { type: "element", tagName: "code", children: [{ type: "text", value: "call [1]" }] },
+    ] }] };
+    const code = run(tree).children[0].children[0];
+    expect(code.children).toEqual([{ type: "text", value: "call [1]" }]);
+  });
 });
