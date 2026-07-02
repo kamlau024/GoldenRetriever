@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { FileText, Globe, Image as ImageIcon, File as FileIcon } from "lucide-react";
+import { FileText } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { KindIcon } from "@/components/kind-icon";
 import { statusBadgeClass, statusLabel, sourceLabel } from "@/lib/status";
 import { relativeTime } from "@/lib/relative-time";
 import { safeHref } from "@/components/chat";
@@ -26,14 +27,6 @@ export interface LibraryDoc {
 const fmt = new Intl.DateTimeFormat("en-US", {
   month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
 });
-
-function KindIcon({ kind }: { kind: string }) {
-  const cls = "size-4 shrink-0 text-muted-foreground";
-  if (kind === "web") return <Globe className={cls} />;
-  if (kind === "image") return <ImageIcon className={cls} />;
-  if (kind === "pdf" || kind === "document") return <FileText className={cls} />;
-  return <FileIcon className={cls} />;
-}
 
 function TitleLink({ doc }: { doc: LibraryDoc }) {
   const href = safeHref(doc.sourceUrl);
