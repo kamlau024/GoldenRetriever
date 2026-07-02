@@ -19,7 +19,7 @@ describe("citedOnly", () => {
 
 describe("encode/parse round-trip", () => {
   it("survives a round-trip", () => {
-    const c = [{ chunkId: "x", documentId: "d", title: "T", sourceUrl: null }];
+    const c = [{ chunkId: "x", documentId: "d", title: "T", sourceUrl: null, kind: "text", content: "a chunk" }];
     expect(parseCitations(encodeCitations(c))).toEqual(c);
   });
 });
