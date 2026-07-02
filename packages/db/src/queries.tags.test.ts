@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createDb } from "./client.js";
-import { createUser, createKnowledgeBase, insertDocument, setDocumentTags, listDocuments } from "./queries.js";
+import { createUser, createKnowledgeBase, insertDocument, setDocumentTags, listDocuments, getDocumentKinds } from "./queries.js";
 
 const URL = process.env.DATABASE_URL ?? "postgres://gr:gr@localhost:5433/gr_test";
 const { db, sql } = createDb(URL);
@@ -30,5 +30,17 @@ describe("document tags", () => {
     });
     const doc = (await listDocuments(db, kbId)).find((d) => d.id === docId)!;
     expect(doc.tags).toEqual([]);
+  });
+});
+
+describe("getDocumentKinds", () => {
+  it("maps document ids to their kind", async () => {
+    const docId = await insertDocument(db, {
+      kbId, addedBy: uid, kind: "web", captureMode: "url_fetch",
+      sourceUrl: "https://x.dev", title: "K", mimeType: "text/html",
+    });
+    const kinds = await getDocumentKinds(db, [docId, "nope"]);
+    expect(kinds.get(docId)).toBe("web");
+    expect(kinds.has("nope")).toBe(false);
   });
 });

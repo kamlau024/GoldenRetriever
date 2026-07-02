@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { streamText } from "ai";
 import { createDb, schema } from "@gr/db";
-import { createConversation, appendMessage, setConversationTitle, getConversationForUser, getMemoryState } from "@gr/db/queries";
+import { createConversation, appendMessage, setConversationTitle, getConversationForUser, getMemoryState, getDocumentKinds } from "@gr/db/queries";
 import { resolveAuth } from "../../../lib/clerk-auth.js";
 import { resolveChatDeps, firstWords } from "../../../lib/chat-service.js";
 import { buildChatPrompt, REFUSAL } from "../../../lib/chat-prompt.js";
-import { encodeCitations } from "../../../lib/citations.js";
+import { encodeCitations, snippet } from "../../../lib/citations.js";
 
 export async function POST(req: NextRequest) {
   const { db } = createDb();
@@ -44,8 +44,11 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  const kinds = await getDocumentKinds(db, [...new Set(hits.map((h) => h.documentId))]);
   const citations = hits.map((h) => ({
-    chunkId: h.chunkId, documentId: h.documentId, title: h.document.title, sourceUrl: h.document.sourceUrl,
+    chunkId: h.chunkId, documentId: h.documentId,
+    title: h.document.title, sourceUrl: h.document.sourceUrl,
+    kind: kinds.get(h.documentId) ?? "text", content: snippet(h.content),
   }));
   const result = streamText({
     model,

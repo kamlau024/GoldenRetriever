@@ -75,6 +75,8 @@ describe("POST /api/chat", () => {
     const { parseCitations } = await import("../lib/citations.js");
     const cites = parseCitations(res.headers.get("x-citations"));
     expect(cites[0]?.documentId).toBe("d1");
+    expect(cites[0]?.content).toContain("Tawaraya"); // capped chunk snippet
+    expect(cites[0]?.kind).toBe("text");             // fallback: no document row for the mock chunk
     const convId = res.headers.get("x-conversation-id");
     expect(convId).toBeTruthy();
     const msgs = await getMessages(db, convId!);

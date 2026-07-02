@@ -270,6 +270,14 @@ export async function clearMemories(db: Db, userId: string): Promise<void> {
   await db.delete(memories).where(eq(memories.userId, userId));
 }
 
+/** Map the given document ids to their `kind` (for the citation source icon). */
+export async function getDocumentKinds(db: Db, documentIds: string[]): Promise<Map<string, string>> {
+  if (documentIds.length === 0) return new Map();
+  const rows = await db.select({ id: documents.id, kind: documents.kind })
+    .from(documents).where(inArray(documents.id, documentIds));
+  return new Map(rows.map((r) => [r.id, r.kind]));
+}
+
 export async function setMemoryEnabled(db: Db, userId: string, enabled: boolean): Promise<void> {
   await db.update(users).set({ memoryEnabled: enabled }).where(eq(users.id, userId));
 }
