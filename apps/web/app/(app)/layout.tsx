@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
 import { Logo } from "@/components/logo";
+import { MobileNav } from "@/components/mobile-nav";
 import { NavLink } from "@/components/nav-link";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -9,9 +10,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-4 py-3">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 px-4 py-3">
           <Link href="/" aria-label="GoldenRetriever home"><Logo /></Link>
-          <nav className="flex items-center gap-5">
+          <nav className="hidden items-center gap-5 sm:flex">
             <NavLink href="/" label="Library" />
             <NavLink href="/chat" label="Chat" />
             <NavLink href="/search" label="Search" />
@@ -20,6 +21,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-1">
             <ThemeToggle />
             <UserButton />
+            <MobileNav />
           </div>
         </div>
       </header>

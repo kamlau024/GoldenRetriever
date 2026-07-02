@@ -33,7 +33,7 @@ export function Logo({ className }: { className?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-2 font-semibold tracking-tight", className)}>
       <LogoMark />
-      <span className="text-foreground">GoldenRetriever</span>
+      <span className="hidden text-foreground sm:inline">GoldenRetriever</span>
     </span>
   );
 }
