@@ -9,7 +9,7 @@ describe("MobileNav", () => {
     render(<MobileNav />);
     fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
     expect(await screen.findByText("Library")).toBeTruthy();
-    expect(screen.getByText("Chat")).toBeTruthy();
+    expect(screen.getByText("Ask")).toBeTruthy();
     expect(screen.getByText("Search")).toBeTruthy();
     expect(screen.getByText("Settings")).toBeTruthy();
   });

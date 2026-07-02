@@ -14,7 +14,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <Link href="/" aria-label="GoldenRetriever home"><Logo /></Link>
           <nav className="hidden items-center gap-5 sm:flex">
             <NavLink href="/" label="Library" />
-            <NavLink href="/chat" label="Chat" />
+            <NavLink href="/chat" label="Ask" />
             <NavLink href="/search" label="Search" />
             <NavLink href="/settings" label="Settings" />
           </nav>

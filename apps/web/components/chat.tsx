@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { DogAvatar } from "@/components/logo";
+import { LogoMark } from "@/components/logo";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -56,7 +56,7 @@ function Avatar({ isUser, userAvatarUrl }: { isUser: boolean; userAvatarUrl?: st
   if (!isUser) {
     return (
       <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-950/60">
-        <DogAvatar className="size-5" />
+        <LogoMark className="h-4 w-auto" />
       </span>
     );
   }
@@ -186,31 +186,33 @@ export function Chat({ kbId }: { kbId: string }) {
   }
 
   return (
-    <Card className="p-3 sm:p-4">
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
-            <SheetTrigger render={<Button variant="outline" size="sm"><History className="size-4" /> History</Button>} />
-            <SheetContent side="left">
-              <SheetTitle>Conversations</SheetTitle>
-              <ChatHistory
-                open={historyOpen}
-                activeId={conversationId}
-                onSelect={selectConversation}
-                onNew={newChat}
-                onDeletedActive={newChat}
-              />
-            </SheetContent>
-          </Sheet>
-          <Button variant="ghost" size="sm" onClick={newChat}><Plus className="size-4" /> New chat</Button>
-        </div>
-        <Transcript messages={messages} userAvatarUrl={user?.imageUrl ?? undefined} />
-        <form onSubmit={send} className="flex gap-2">
-          <Input className="flex-1" value={input} onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask your library…" />
-          <Button type="submit" disabled={busy}>Ask</Button>
-        </form>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+          <SheetTrigger render={<Button variant="outline" size="sm"><History className="size-4" /> History</Button>} />
+          <SheetContent side="left">
+            <SheetTitle>Conversations</SheetTitle>
+            <ChatHistory
+              open={historyOpen}
+              activeId={conversationId}
+              onSelect={selectConversation}
+              onNew={newChat}
+              onDeletedActive={newChat}
+            />
+          </SheetContent>
+        </Sheet>
+        <Button variant="ghost" size="sm" onClick={newChat}><Plus className="size-4" /> New chat</Button>
       </div>
-    </Card>
+      <Card className="p-3 sm:p-4">
+        <div className="space-y-4">
+          <Transcript messages={messages} userAvatarUrl={user?.imageUrl ?? undefined} />
+          <form onSubmit={send} className="flex gap-2">
+            <Input className="flex-1" value={input} onChange={(e) => setInput(e.target.value)}
+              placeholder="Ask your library…" />
+            <Button type="submit" disabled={busy}>Ask</Button>
+          </form>
+        </div>
+      </Card>
+    </div>
   );
 }

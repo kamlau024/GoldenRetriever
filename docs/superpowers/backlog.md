@@ -57,6 +57,11 @@ Living list of outstanding work, so nothing planned-but-skipped gets lost. Updat
   journal/snapshot (`0001_memory.sql` was hand-written, so `drizzle-kit generate` would re-emit
   `memories`); add an HNSW index on `memories.embedding` if a user's fact count ever grows large
   (dedup currently seq-scans per user — fine at tens–hundreds).
+- **Mobile nav a11y** *(deferred from the mobile-friendly final review, Minor)* — the hamburger menu
+  button in `components/mobile-nav.tsx` is `sm:hidden` (CSS `display:none` at `sm+`) but stays in the
+  DOM and keyboard tab order at desktop widths, so a keyboard user can still focus an invisible "Open
+  menu" button. Fix: conditionally render the trigger, or add `tabIndex={-1}` + `aria-hidden` at `sm+`
+  (a CSS-only `sm:hidden` can't remove it from the a11y tree).
 
 ## Future stages (roadmap — `specs/2026-06-14-goldenretriever-architecture-design.md`)
 - **Conversational memory** *(design in progress, 2026-06-30 — spec to land in `specs/`)* — two layers:

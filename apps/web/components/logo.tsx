@@ -8,8 +8,11 @@ const DOG_PATH =
 export function LogoMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 191 113" role="img" aria-label="GoldenRetriever" className={cn("h-7 w-auto text-primary", className)}>
-      <g transform="translate(0,113) scale(0.1,-0.1)" fill="currentColor">
-        <path d={DOG_PATH} />
+      {/* Mirror horizontally so the dog faces right. */}
+      <g transform="translate(191,0) scale(-1,1)">
+        <g transform="translate(0,113) scale(0.1,-0.1)" fill="currentColor">
+          <path d={DOG_PATH} />
+        </g>
       </g>
     </svg>
   );
