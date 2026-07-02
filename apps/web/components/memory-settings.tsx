@@ -50,7 +50,7 @@ export function MemorySettings({ enabled: initialEnabled, initialMemories }: { e
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">
           {enabled ? "GoldenRetriever remembers durable facts about you to personalize answers." : "Memory is off — no facts are used or added."}
         </p>

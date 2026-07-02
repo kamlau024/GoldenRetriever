@@ -71,7 +71,7 @@ export function AddContent({ kbId }: { kbId: string }) {
 
           <TabsContent value="file" className="space-y-3">
             <Label className="text-sm text-muted-foreground">PDF, Word, PowerPoint, Excel, or an image</Label>
-            <Input type="file" disabled={busy} onChange={uploadFile}
+            <Input type="file" disabled={busy} className="w-full" onChange={uploadFile}
               accept=".pdf,.docx,.pptx,.xlsx,.png,.jpg,.jpeg" />
           </TabsContent>
         </Tabs>

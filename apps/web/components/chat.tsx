@@ -78,7 +78,7 @@ export function Transcript({ messages, userAvatarUrl }: { messages: Turn[]; user
         return (
           <div key={m.id} className={cn("flex items-start gap-2", isUser && "flex-row-reverse")}>
             <Avatar isUser={isUser} userAvatarUrl={userAvatarUrl} />
-            <div className={cn("min-w-0 flex-1", isUser ? "ml-9 text-right" : "mr-9 text-left")}>
+            <div className={cn("min-w-0 flex-1", isUser ? "ml-6 text-right sm:ml-9" : "mr-6 text-left sm:mr-9")}>
               <div className={cn(
                 "inline-block max-w-full rounded-lg px-3 py-2 text-left",
                 isUser ? "bg-muted text-foreground" : "bg-amber-100 text-amber-950 dark:bg-amber-950/60 dark:text-amber-50",
@@ -186,7 +186,7 @@ export function Chat({ kbId }: { kbId: string }) {
   }
 
   return (
-    <Card className="p-4">
+    <Card className="p-3 sm:p-4">
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
