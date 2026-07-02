@@ -1,5 +1,5 @@
 "use client";
-import { useState, type FormEvent } from "react";
+import { useState, useMemo, type FormEvent } from "react";
 import { useUser } from "@clerk/nextjs";
 import { User, History, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -8,13 +8,14 @@ import { ChatHistory } from "@/components/chat-history";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { LogoMark } from "@/components/logo";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { rehypeCitations } from "@/lib/rehype-citations";
+import { makeCitation, type CitationData } from "@/components/citation";
 
-export interface Citation { title: string | null; sourceUrl: string | null; }
+export interface Citation { title: string | null; sourceUrl: string | null; kind: string; content: string; }
 export interface Turn { id: string; role: string; content: string; citations?: Citation[]; }
 
 /** Only allow http(s) hrefs; anything else (e.g. `javascript:`) becomes inert. Prevents XSS
@@ -29,11 +30,13 @@ export function safeHref(u: string | null | undefined): string {
   }
 }
 
-/** Render an assistant reply as markdown (bold, lists, links, code, …). */
-function Markdown({ children }: { children: string }) {
+/** Render an assistant reply as markdown (bold, lists, links, code, …), with `[n]` markers rendered
+ *  as inline citation icons that open a source popover. */
+function Markdown({ children, citations }: { children: string; citations?: CitationData[] }) {
+  const components = useMemo(() => ({ cite: makeCitation(citations ?? []) }), [citations]);
   return (
     <div className="space-y-2 text-left [&_a]:underline [&_code]:rounded [&_code]:bg-black/10 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.85em] dark:[&_code]:bg-white/15 [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_li]:my-0.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-0 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-black/10 [&_pre]:p-2 dark:[&_pre]:bg-white/10 [&_strong]:font-semibold [&_ul]:list-disc [&_ul]:pl-5">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeCitations]} components={components}>{children}</ReactMarkdown>
     </div>
   );
 }
@@ -48,9 +51,6 @@ function TypingDots() {
     </span>
   );
 }
-
-// Citation chips: a light, outlined "source" pill — distinct from the solid amber reply bubble.
-const CITE = "border border-amber-400/60 bg-amber-50 text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200";
 
 function Avatar({ isUser, userAvatarUrl }: { isUser: boolean; userAvatarUrl?: string }) {
   if (!isUser) {
@@ -83,23 +83,8 @@ export function Transcript({ messages, userAvatarUrl }: { messages: Turn[]; user
                 "inline-block max-w-full rounded-lg px-3 py-2 text-left",
                 isUser ? "bg-muted text-foreground" : "bg-amber-100 text-amber-950 dark:bg-amber-950/60 dark:text-amber-50",
               )}>
-                {isUser ? m.content : m.content === "" ? <TypingDots /> : <Markdown>{m.content}</Markdown>}
+                {isUser ? m.content : m.content === "" ? <TypingDots /> : <Markdown citations={m.citations}>{m.content}</Markdown>}
               </div>
-              {m.citations?.length ? (
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {m.citations.map((c, i) => {
-                    const href = safeHref(c.sourceUrl);
-                    const label = c.title ?? "source";
-                    // Pasted text / uploads have no external URL → show a non-clickable chip
-                    // instead of a dead link that opens a blank tab.
-                    return href === "#" ? (
-                      <Badge key={i} variant="secondary" className={CITE} title="Saved text — no external source">{label}</Badge>
-                    ) : (
-                      <Badge key={i} variant="secondary" className={CITE} render={<a href={href} target="_blank" rel="noopener noreferrer" className="underline" />}>{c.title ?? c.sourceUrl}</Badge>
-                    );
-                  })}
-                </div>
-              ) : null}
             </div>
           </div>
         );
@@ -133,8 +118,8 @@ export function Chat({ kbId }: { kbId: string }) {
       setMessages(detail.messages.map((m) => ({
         id: m.id, role: m.role, content: m.content,
         citations: Array.isArray(m.citations)
-          ? (m.citations as { title: string | null; sourceUrl: string | null }[])
-              .map((c) => ({ title: c.title, sourceUrl: c.sourceUrl }))
+          ? (m.citations as { title: string | null; sourceUrl: string | null; kind?: string; content?: string }[])
+              .map((c) => ({ title: c.title, sourceUrl: c.sourceUrl, kind: c.kind ?? "text", content: c.content ?? "" }))
           : undefined,
       })));
       setConversationId(id);
@@ -164,9 +149,9 @@ export function Chat({ kbId }: { kbId: string }) {
       if (!res.ok) { setAssistant({ content: ERR }); return; }
       const newConvId = res.headers.get("x-conversation-id");
       if (newConvId && !conversationId) setConversationId(newConvId);
-      const { parseCitations, citedOnly } = await import("../lib/citations.js");
+      const { parseCitations } = await import("../lib/citations.js");
       const allCitations = parseCitations(res.headers.get("x-citations"))
-        .map((c) => ({ title: c.title, sourceUrl: c.sourceUrl }));
+        .map((c) => ({ title: c.title, sourceUrl: c.sourceUrl, kind: c.kind, content: c.content }));
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       let acc = "";
@@ -177,7 +162,7 @@ export function Chat({ kbId }: { kbId: string }) {
         setAssistant({ content: acc });
       }
       if (!acc.trim()) { setAssistant({ content: ERR }); return; }
-      setAssistant({ citations: citedOnly(acc, allCitations) });
+      setAssistant({ citations: allCitations });
     } catch {
       setAssistant({ content: "⚠️ Network error — please try again." });
     } finally {

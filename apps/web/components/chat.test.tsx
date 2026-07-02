@@ -15,15 +15,19 @@ function streamRes(text: string, headers: Record<string, string>) {
 }
 
 describe("Transcript", () => {
-  it("renders user and assistant turns with a citation chip", () => {
+  it("renders a user turn and an assistant reply with an inline citation icon (no chips)", () => {
     render(<Transcript messages={[
       { id: "1", role: "user", content: "where to stay?" },
-      { id: "2", role: "assistant", content: "Tawaraya [1].", citations: [{ title: "Kyoto", sourceUrl: "https://x" }] },
+      { id: "2", role: "assistant", content: "Tawaraya [1].", citations: [
+        { title: "Kyoto", sourceUrl: "https://x", kind: "web", content: "Tawaraya is a ryokan." },
+      ] },
     ]} />);
     expect(screen.getByText("where to stay?")).toBeTruthy();
     expect(screen.getByText(/Tawaraya/)).toBeTruthy();
-    const link = screen.getByText("Kyoto") as HTMLAnchorElement;
-    expect(link.getAttribute("href")).toBe("https://x");
+    expect(screen.getByRole("button", { name: /Source: Kyoto/ })).toBeTruthy();
+    // the chip is gone (title only shows in the popover once opened) and the literal [1] is replaced
+    expect(screen.queryByText("Kyoto")).toBeNull();
+    expect(screen.queryByText("Tawaraya [1].")).toBeNull();
   });
 
   it("renders assistant replies as markdown (bold)", () => {
@@ -33,15 +37,6 @@ describe("Transcript", () => {
     expect(screen.getByText("important").tagName).toBe("STRONG");
   });
 
-  it("renders a non-link chip (no anchor) for a javascript: or absent source URL", () => {
-    render(<Transcript messages={[
-      { id: "1", role: "assistant", content: "evil", citations: [{ title: "x", sourceUrl: "javascript:alert(1)" }] },
-      { id: "2", role: "assistant", content: "note", citations: [{ title: "plain", sourceUrl: null }] },
-    ]} />);
-    // No clickable anchor is produced for unsafe/absent URLs (XSS guard + no dead link).
-    expect(screen.getByText("x").closest("a")).toBeNull();
-    expect(screen.getByText("plain").closest("a")).toBeNull();
-  });
 });
 
 describe("safeHref", () => {
