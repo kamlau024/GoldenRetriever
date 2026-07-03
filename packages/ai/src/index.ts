@@ -4,6 +4,7 @@ import { resolveModels } from "./models.js";
 import { rankFromList, type RerankHit } from "./rerank.js";
 import { cleanTitle } from "./title.js";
 import { parseMemories } from "./memory.js";
+import { cleanSummary } from "./summary.js";
 
 export type { RerankHit };
 
@@ -18,6 +19,8 @@ export interface AiClient {
   titleConversation(firstMessage: string): Promise<string>;
   /** 0-3 durable facts/preferences about the user, distilled from one exchange. */
   extractMemories(userMessage: string, reply: string): Promise<string[]>;
+  /** A short running summary of a conversation, updated from the latest exchange, for recall. */
+  summarizeConversation(priorSummary: string | null, userMessage: string, reply: string): Promise<string>;
 }
 
 export function createAiClient(): AiClient {
@@ -87,6 +90,17 @@ export function createAiClient(): AiClient {
           `User: ${userMessage.slice(0, 1000)}\nAssistant: ${reply.slice(0, 1000)}`,
       });
       return parseMemories(text);
+    },
+    async summarizeConversation(priorSummary, userMessage, reply) {
+      const { text } = await generateText({
+        model: models.tagging,
+        prompt:
+          `Write or update a 1-2 sentence summary of a conversation, capturing its topic and any ` +
+          `conclusions, for later retrieval. Reply with only the summary.\n\n` +
+          (priorSummary ? `Current summary: ${priorSummary}\n\n` : "") +
+          `Latest exchange:\nUser: ${userMessage.slice(0, 1000)}\nAssistant: ${reply.slice(0, 1000)}`,
+      });
+      return cleanSummary(text);
     },
   };
 }
