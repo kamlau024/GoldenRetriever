@@ -267,8 +267,11 @@ export async function deleteMemory(db: Db, id: string, userId: string): Promise<
 }
 
 export async function clearMemories(db: Db, userId: string): Promise<void> {
-  await db.delete(memories).where(eq(memories.userId, userId));
-  await db.update(conversations).set({ summary: null, summaryEmbedding: null }).where(eq(conversations.userId, userId));
+  // Atomic: wiping facts and clearing conversation summaries is one logical "clear all memory".
+  await db.transaction(async (tx) => {
+    await tx.delete(memories).where(eq(memories.userId, userId));
+    await tx.update(conversations).set({ summary: null, summaryEmbedding: null }).where(eq(conversations.userId, userId));
+  });
 }
 
 export async function setConversationSummary(db: Db, conversationId: string, summary: string, embedding: number[]): Promise<void> {
