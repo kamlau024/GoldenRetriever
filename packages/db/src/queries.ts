@@ -306,6 +306,14 @@ export async function getDocumentKinds(db: Db, documentIds: string[]): Promise<M
   return new Map(rows.map((r) => [r.id, r.kind]));
 }
 
+/** chunkId → chunk text, for the chunks that still exist (deleted chunks are simply absent). */
+export async function getChunkContents(db: Db, chunkIds: string[]): Promise<Map<string, string>> {
+  if (chunkIds.length === 0) return new Map();
+  const rows = await db.select({ id: chunks.id, content: chunks.content })
+    .from(chunks).where(inArray(chunks.id, chunkIds));
+  return new Map(rows.map((r) => [r.id, r.content]));
+}
+
 export async function setMemoryEnabled(db: Db, userId: string, enabled: boolean): Promise<void> {
   await db.update(users).set({ memoryEnabled: enabled }).where(eq(users.id, userId));
 }
