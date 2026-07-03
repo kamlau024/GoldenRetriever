@@ -3,7 +3,7 @@ import type { drizzle } from "drizzle-orm/postgres-js";
 import { HybridRetriever, type Retriever } from "@gr/retrieval";
 import { createAiClient } from "@gr/ai";
 import { env } from "@gr/config";
-import { rememberFromExchange } from "./memory.js";
+import { rememberFromExchange, recallPastChats } from "./memory.js";
 
 type Db = ReturnType<typeof drizzle>;
 export interface ChatDeps {
@@ -11,6 +11,7 @@ export interface ChatDeps {
   model: LanguageModel;
   titleConversation?: (firstMessage: string) => Promise<string>;
   remember?: (args: { userId: string; userMessage: string; reply: string; conversationId: string }) => Promise<void>;
+  recall?: (args: { userId: string; question: string; excludeConversationId: string }) => Promise<string[]>;
 }
 let override: ChatDeps | null = null;
 export function __setChatDeps(d: ChatDeps | null) { override = d; }
@@ -22,6 +23,7 @@ export function resolveChatDeps(db: Db): ChatDeps {
     model: env.GR_GENERATION_MODEL,
     titleConversation: (m) => ai.titleConversation(m),
     remember: (args) => rememberFromExchange(db, ai, args),
+    recall: (args) => recallPastChats(db, ai, args),
   };
 }
 
