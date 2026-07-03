@@ -111,6 +111,8 @@ export const conversations = pgTable("conversations", {
   kbId: text("kb_id").notNull().references(() => knowledgeBases.id, { onDelete: "cascade" }),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   title: text("title"),
+  summary: text("summary"),
+  summaryEmbedding: vector("summary_embedding", { dimensions: 1536 }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
