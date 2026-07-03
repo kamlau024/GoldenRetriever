@@ -268,6 +268,31 @@ export async function deleteMemory(db: Db, id: string, userId: string): Promise<
 
 export async function clearMemories(db: Db, userId: string): Promise<void> {
   await db.delete(memories).where(eq(memories.userId, userId));
+  await db.update(conversations).set({ summary: null, summaryEmbedding: null }).where(eq(conversations.userId, userId));
+}
+
+export async function setConversationSummary(db: Db, conversationId: string, summary: string, embedding: number[]): Promise<void> {
+  await db.update(conversations).set({ summary, summaryEmbedding: embedding }).where(eq(conversations.id, conversationId));
+}
+
+export async function getConversationSummary(db: Db, conversationId: string): Promise<string | null> {
+  const rows = await db.select({ summary: conversations.summary }).from(conversations).where(eq(conversations.id, conversationId));
+  return rows[0]?.summary ?? null;
+}
+
+/** Semantically-nearest past-conversation summaries for a user, excluding the current thread and
+ *  conversations without a summary. Returns the summary strings, closest first. */
+export async function recallConversations(
+  db: Db, userId: string, queryEmbedding: number[], excludeConversationId: string, k = 3,
+): Promise<string[]> {
+  const vec = `[${queryEmbedding.join(",")}]`;
+  const rows = await db.execute<{ summary: string }>(sql`
+    SELECT summary FROM conversations
+    WHERE user_id = ${userId} AND id <> ${excludeConversationId}
+      AND summary IS NOT NULL AND summary_embedding IS NOT NULL
+    ORDER BY summary_embedding <=> ${vec}::vector
+    LIMIT ${k}`);
+  return [...rows].map((r) => r.summary);
 }
 
 /** Map the given document ids to their `kind` (for the citation source icon). */
