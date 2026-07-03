@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   const convId = conversationId ?? await createConversation(db, { kbId, userId: principal.userId });
   await appendMessage(db, { conversationId: convId, role: "user", content: message });
 
-  const { retriever, model, titleConversation, remember } = resolveChatDeps(db);
+  const { retriever, model, titleConversation, remember, recall } = resolveChatDeps(db);
   const memory = await getMemoryState(db, principal.userId);
   const hits = await retriever.retrieve(kbId, message);
 
@@ -42,6 +42,12 @@ export async function POST(req: NextRequest) {
       status: 200,
       headers: { "content-type": "text/plain; charset=utf-8", "x-conversation-id": convId, "x-citations": encodeCitations([]) },
     });
+  }
+
+  let pastChats: string[] = [];
+  if (memory.enabled && recall) {
+    try { pastChats = await recall({ userId: principal.userId, question: message, excludeConversationId: convId }); }
+    catch { /* best-effort — recall must not break the reply */ }
   }
 
   const kinds = await getDocumentKinds(db, [...new Set(hits.map((h) => h.documentId))]);
@@ -57,6 +63,7 @@ export async function POST(req: NextRequest) {
       sources: hits.map((h) => h.content),
       history: priorMessages,
       facts: memory.enabled ? memory.facts : [],
+      pastChats,
     }),
     onFinish: async ({ text, totalUsage }) => {
       await appendMessage(db, {

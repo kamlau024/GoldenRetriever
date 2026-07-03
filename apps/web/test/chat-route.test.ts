@@ -173,4 +173,25 @@ describe("POST /api/chat", () => {
 
     await setMemoryEnabled(db, "u_chat_r", true); // restore for other tests
   });
+
+  it("injects recalled past-conversation summaries when memory is enabled", async () => {
+    __setChatDeps({
+      retriever: retrieverReturning([chunk("Roadmapping tips.")]),
+      model: capturingModel("Sure [1]."),
+      recall: async () => ["Earlier you planned a Kyoto trip."],
+    });
+    await (await post({ kbId, message: "plan my week" })).text();
+    expect(capturedPrompt).toContain("Possibly relevant past chats");
+    expect(capturedPrompt).toContain("Earlier you planned a Kyoto trip");
+  });
+
+  it("does not recall when memory is disabled", async () => {
+    const { setMemoryEnabled } = await import("@gr/db/queries");
+    let recallCalls = 0;
+    await setMemoryEnabled(db, "u_chat_r", false);
+    __setChatDeps({ retriever: retrieverReturning([chunk("x")]), model: modelSaying("y [1]."), recall: async () => { recallCalls++; return []; } });
+    await (await post({ kbId, message: "hi" })).text();
+    expect(recallCalls).toBe(0);
+    await setMemoryEnabled(db, "u_chat_r", true); // restore for other tests
+  });
 });
