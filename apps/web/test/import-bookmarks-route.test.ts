@@ -13,6 +13,7 @@ import { POST } from "../app/api/import/bookmarks/route.js";
 const URL = process.env.DATABASE_URL ?? "postgres://gr:gr@localhost:5433/gr_test";
 const { db, sql } = createDb(URL);
 let kbId: string, otherKbId: string, token: string;
+let savedAppUrl: string | undefined;
 
 const post = (body: unknown, auth?: string) =>
   POST(new NextRequest("http://localhost/api/import/bookmarks", {
@@ -33,13 +34,26 @@ beforeAll(async () => {
   token = "grt_bmimp";
   await db.insert(schema.apiTokens).values({ id: `tok_${randomUUID().slice(0, 8)}`, userId: uid, name: "t", tokenHash: hashToken(token) });
   __setIngestDeps({ ai: createMockAiClient(), converter: new MockConverter(), urlFetcher: async () => ({ kind: "text" as const, mimeType: "text/plain", text: "hi" }) });
+  savedAppUrl = process.env.APP_URL;
   delete process.env.APP_URL; // force in-process processing
 });
-afterAll(async () => { __setIngestDeps(null); await sql.end(); });
+afterAll(async () => {
+  __setIngestDeps(null);
+  if (savedAppUrl !== undefined) process.env.APP_URL = savedAppUrl;
+  await sql.end();
+});
 
 describe("POST /api/import/bookmarks", () => {
   it("401 without auth", async () => {
     expect((await post({ kbId, items: [{ url: safe() }] })).status).toBe(401);
+  });
+  it("400 on malformed JSON body", async () => {
+    const res = await POST(new NextRequest("http://localhost/api/import/bookmarks", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: "{ not valid json",
+    }));
+    expect(res.status).toBe(400);
   });
   it("400 when items is empty", async () => {
     expect((await post({ kbId, items: [] }, token)).status).toBe(400);

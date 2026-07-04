@@ -12,7 +12,9 @@ export async function POST(req: NextRequest) {
   const principal = await resolveAuth(db, req);
   if (!principal) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const body = await req.json().catch(() => ({})) as { kbId?: string; items?: { url?: unknown; title?: unknown }[] };
+  let body: { kbId?: string; items?: { url?: unknown; title?: unknown }[] };
+  try { body = await req.json(); }
+  catch { return NextResponse.json({ error: "invalid json" }, { status: 400 }); }
   const items = Array.isArray(body.items) ? body.items : [];
   if (items.length === 0) return NextResponse.json({ error: "items required" }, { status: 400 });
   if (items.length > MAX_BOOKMARK_IMPORT) {
