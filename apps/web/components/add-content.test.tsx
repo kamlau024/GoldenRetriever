@@ -28,4 +28,14 @@ describe("AddContent", () => {
     await waitFor(() => expect(refresh).toHaveBeenCalled());
     expect(toast.success).toHaveBeenCalled();
   });
+
+  it("uploads a dropped file via the File tab", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AddContent kbId="kb1" />);
+    fireEvent.click(screen.getByRole("tab", { name: /file/i }));
+    const file = new File(["x"], "doc.pdf", { type: "application/pdf" });
+    fireEvent.change(await screen.findByLabelText("Upload files"), { target: { files: [file] } });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/upload", expect.objectContaining({ method: "POST" })));
+  });
 });

@@ -1,5 +1,5 @@
 "use client";
-import { useState, type ChangeEvent } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,12 +9,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { BookmarkImport } from "@/components/bookmark-import";
+import { FileDropzone } from "@/components/ui/file-dropzone";
 
 export function AddContent({ kbId }: { kbId: string }) {
   const router = useRouter();
   const [text, setText] = useState("");
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState<Set<string>>(new Set());
 
   async function done(res: Response) {
     setBusy(false);
@@ -37,14 +40,22 @@ export function AddContent({ kbId }: { kbId: string }) {
     } catch { setBusy(false); toast.error("Network error."); }
   }
 
-  async function uploadFile(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setBusy(true);
-    const fd = new FormData(); fd.set("kbId", kbId); fd.set("file", file);
-    try { await done(await fetch("/api/upload", { method: "POST", body: fd })); }
-    catch { setBusy(false); toast.error("Network error."); }
-    e.target.value = "";
+  async function uploadEach(added: File[]) {
+    for (const file of added) {
+      setUploading((s) => new Set(s).add(file.name));
+      const fd = new FormData(); fd.set("kbId", kbId); fd.set("file", file);
+      try {
+        const res = await fetch("/api/upload", { method: "POST", body: fd });
+        if (!res.ok) throw new Error();
+        setFiles((fs) => fs.filter((f) => f !== file));
+        toast.success("Saved — processing…");
+        router.refresh();
+      } catch {
+        toast.error("Couldn't upload that file. Please try again.");
+      } finally {
+        setUploading((s) => { const n = new Set(s); n.delete(file.name); return n; });
+      }
+    }
   }
 
   return (
@@ -73,8 +84,11 @@ export function AddContent({ kbId }: { kbId: string }) {
 
           <TabsContent value="file" className="space-y-3">
             <Label className="text-sm text-muted-foreground">PDF, Word, PowerPoint, Excel, or an image</Label>
-            <Input type="file" disabled={busy} className="w-full" onChange={uploadFile}
-              accept=".pdf,.docx,.pptx,.xlsx,.png,.jpg,.jpeg" />
+            <FileDropzone
+              value={files} onValueChange={setFiles} onAdd={uploadEach}
+              accept=".pdf,.docx,.pptx,.xlsx,.png,.jpg,.jpeg"
+              maxSize={25 * 1024 * 1024} maxFileCount={10} uploading={uploading} ariaLabel="Upload files"
+            />
           </TabsContent>
 
           <TabsContent value="import" className="space-y-3">
