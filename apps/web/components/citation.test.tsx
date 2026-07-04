@@ -16,4 +16,12 @@ describe("Citation", () => {
     render(<Cite node={{ properties: { "data-cite": "9" } }} />);
     expect(screen.getByText("[9]")).toBeTruthy();
   });
+  it("renders the chunk snippet as markdown", async () => {
+    const Md = makeCitation([{ title: "Doc", sourceUrl: null, kind: "text", content: "**bold** then\n\n- item one\n- item two" }]);
+    render(<Md node={{ properties: { "data-cite": "1" } }} />);
+    fireEvent.click(screen.getByRole("button", { name: /Source: Doc/ }));
+    const strong = await screen.findByText("bold");
+    expect(strong.tagName).toBe("STRONG");
+    expect(screen.getByText("item one").tagName).toBe("LI");
+  });
 });
