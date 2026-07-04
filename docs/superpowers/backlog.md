@@ -68,6 +68,16 @@ Living list of outstanding work, so nothing planned-but-skipped gets lost. Updat
   `x-citations` response-header size in production (≤8 chunks × 500-char snippets can approach the ~8 KB
   header limit for replies citing many long-URL sources — add a citation-count/title cap if it recurs).
 
+- **Chat refinements — follow-ups** *(deferred from the chat-refinements final review, 2026-07-03, all Minor)* —
+  (a) `components/citation.tsx`: markdown-rendered `<a>` links in the citation popup open in the same tab; add a
+  custom `a` component to `ReactMarkdown` (`target="_blank" rel="noopener noreferrer"`) to match the "Open source ↗"
+  footer link; (b) `components/citation.test.tsx`: assert the `<ul>` container (not just `<li>`); (c) `PATCH
+  /api/conversations/[id]`: add a test for the 201→200-char title truncation boundary (only matters for direct API
+  callers — the UI trims client-side too); (d) `packages/db/src/queries.ts`: add a `⚠ no ownership check — internal
+  use only` note to `setConversationTitle` to distinguish it from the ownership-scoped `renameConversation`, and
+  audit callers; (e) the inline-rename input is uncontrolled (`defaultValue`) — fine given the mount/unmount
+  lifecycle, revisit only if the input is ever reused across edit sessions.
+
 ## Future stages (roadmap — `specs/2026-06-14-goldenretriever-architecture-design.md`)
 - **Conversational memory** *(design in progress, 2026-06-30 — spec to land in `specs/`)* — two layers:
   (a) **within-conversation** memory so follow-ups work (feed prior turns of the active thread to the
