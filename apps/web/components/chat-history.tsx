@@ -34,6 +34,8 @@ export function ChatHistory({ open, activeId, onSelect, onNew, onDeletedActive }
   const [pendingDelete, setPendingDelete] = useState<ConversationSummary | null>(null);
   const editRef = useRef<HTMLInputElement>(null);
   const savingRef = useRef(false);
+  const itemsRef = useRef<ConversationSummary[] | null>(null);
+  useEffect(() => { itemsRef.current = items; }, [items]);
 
   // Re-arm the guard whenever a new edit session starts.
   useEffect(() => { if (editingId) savingRef.current = false; }, [editingId]);
@@ -68,7 +70,7 @@ export function ChatHistory({ open, activeId, onSelect, onNew, onDeletedActive }
     savingRef.current = true;
     const title = raw.trim().slice(0, 200);
     setEditingId(null);
-    const current = items?.find((x) => x.id === id);
+    const current = itemsRef.current?.find((x) => x.id === id);
     if (!title || !current || title === current.title) return;
     try {
       const res = await fetch(`/api/conversations/${id}`, {
