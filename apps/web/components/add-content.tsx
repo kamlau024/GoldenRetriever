@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { BookmarkImport } from "@/components/bookmark-import";
 
 export function AddContent({ kbId }: { kbId: string }) {
   const router = useRouter();
@@ -55,6 +56,7 @@ export function AddContent({ kbId }: { kbId: string }) {
             <TabsTrigger value="text">Text</TabsTrigger>
             <TabsTrigger value="url">URL</TabsTrigger>
             <TabsTrigger value="file">File</TabsTrigger>
+            <TabsTrigger value="import">Import</TabsTrigger>
           </TabsList>
 
           <TabsContent value="text" className="space-y-3">
@@ -73,6 +75,10 @@ export function AddContent({ kbId }: { kbId: string }) {
             <Label className="text-sm text-muted-foreground">PDF, Word, PowerPoint, Excel, or an image</Label>
             <Input type="file" disabled={busy} className="w-full" onChange={uploadFile}
               accept=".pdf,.docx,.pptx,.xlsx,.png,.jpg,.jpeg" />
+          </TabsContent>
+
+          <TabsContent value="import" className="space-y-3">
+            <BookmarkImport kbId={kbId} />
           </TabsContent>
         </Tabs>
       </CardContent>
