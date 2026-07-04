@@ -1,14 +1,17 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
-import { Plus, Trash2, MessageSquare } from "lucide-react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { Plus, Trash2, MessageSquare, MoreVertical, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { relativeTime } from "@/lib/relative-time";
 
@@ -27,6 +30,9 @@ export function ChatHistory({ open, activeId, onSelect, onNew, onDeletedActive }
   onDeletedActive: () => void;
 }) {
   const [items, setItems] = useState<ConversationSummary[] | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<ConversationSummary | null>(null);
+  const editRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -40,6 +46,7 @@ export function ChatHistory({ open, activeId, onSelect, onNew, onDeletedActive }
   }, []);
 
   useEffect(() => { if (open) load(); }, [open, load]);
+  useEffect(() => { if (editingId) { const el = editRef.current; el?.focus(); el?.select(); } }, [editingId]);
 
   async function remove(id: string) {
     try {
@@ -52,13 +59,30 @@ export function ChatHistory({ open, activeId, onSelect, onNew, onDeletedActive }
     }
   }
 
+  async function save(id: string, raw: string) {
+    const title = raw.trim().slice(0, 200);
+    setEditingId(null);
+    const current = items?.find((x) => x.id === id);
+    if (!title || !current || title === current.title) return;
+    try {
+      const res = await fetch(`/api/conversations/${id}`, {
+        method: "PATCH", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      if (!res.ok) throw new Error();
+      setItems((xs) => (xs ?? []).map((x) => (x.id === id ? { ...x, title } : x)));
+    } catch {
+      toast.error("Couldn't rename");
+    }
+  }
+
   return (
-    <div className="flex h-full flex-col gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="flex items-center justify-between">
         <span className="text-sm font-semibold">History</span>
         <Button size="sm" variant="outline" onClick={onNew}><Plus className="size-4" /> New chat</Button>
       </div>
-      <ScrollArea className="-mx-1 flex-1">
+      <ScrollArea className="-mx-1 min-h-0 flex-1">
         <div className="flex flex-col gap-1 px-1">
           {items === null ? (
             <>
@@ -77,35 +101,58 @@ export function ChatHistory({ open, activeId, onSelect, onNew, onDeletedActive }
                   c.id === activeId && "bg-muted",
                 )}
               >
-                <button type="button" onClick={() => onSelect(c.id)} className="flex min-w-0 flex-1 items-center gap-2">
-                  <MessageSquare className="size-4 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate">{c.title ?? "Untitled chat"}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">{relativeTime(new Date(c.lastActivityAt))}</span>
-                </button>
-                <AlertDialog>
-                  <AlertDialogTrigger
-                    render={
-                      <Button variant="ghost" size="icon" className="size-7 shrink-0 opacity-0 group-hover:opacity-100" aria-label="Delete conversation">
-                        <Trash2 className="size-4" />
-                      </Button>
-                    }
+                {editingId === c.id ? (
+                  <input
+                    ref={editRef}
+                    defaultValue={c.title ?? ""}
+                    aria-label="Conversation name"
+                    className="min-w-0 flex-1 rounded border bg-background px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-ring"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); save(c.id, e.currentTarget.value); }
+                      else if (e.key === "Escape") { e.preventDefault(); setEditingId(null); }
+                    }}
+                    onBlur={(e) => save(c.id, e.target.value)}
                   />
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Delete this conversation?</AlertDialogTitle>
-                      <AlertDialogDescription>&ldquo;{c.title ?? "Untitled chat"}&rdquo; will be permanently removed.</AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={() => remove(c.id)}>Delete</AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                ) : (
+                  <>
+                    <button type="button" onClick={() => onSelect(c.id)} className="flex min-w-0 flex-1 items-center gap-2">
+                      <MessageSquare className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1 truncate">{c.title ?? "Untitled chat"}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{relativeTime(new Date(c.lastActivityAt))}</span>
+                    </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <Button variant="ghost" size="icon" className="size-7 shrink-0 text-muted-foreground" aria-label="Conversation actions">
+                            <MoreVertical className="size-4" />
+                          </Button>
+                        }
+                      />
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setEditingId(c.id)}><Pencil className="size-4" /> Rename</DropdownMenuItem>
+                        <DropdownMenuItem variant="destructive" onClick={() => setPendingDelete(c)}><Trash2 className="size-4" /> Delete</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </>
+                )}
               </div>
             ))
           )}
         </div>
       </ScrollArea>
+
+      <AlertDialog open={pendingDelete !== null} onOpenChange={(o) => { if (!o) setPendingDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this conversation?</AlertDialogTitle>
+            <AlertDialogDescription>&ldquo;{pendingDelete?.title ?? "Untitled chat"}&rdquo; will be permanently removed.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { const p = pendingDelete; setPendingDelete(null); if (p) remove(p.id); }}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

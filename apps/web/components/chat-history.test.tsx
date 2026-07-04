@@ -13,6 +13,7 @@ function makeFetch() {
   return vi.fn(async (url: string, init?: RequestInit) => {
     if (url === "/api/conversations") return { ok: true, json: async () => ({ conversations }) } as Response;
     if (init?.method === "DELETE") return { ok: true, json: async () => ({ ok: true }) } as Response;
+    if (init?.method === "PATCH") return { ok: true, json: async () => ({ ok: true, title: JSON.parse(String(init.body)).title }) } as Response;
     return { ok: false } as Response;
   });
 }
@@ -47,9 +48,21 @@ describe("ChatHistory", () => {
     const onDeletedActive = vi.fn();
     render(<ChatHistory open activeId="c1" onSelect={noop} onNew={noop} onDeletedActive={onDeletedActive} />);
     await screen.findByText("Kyoto trip");
-    fireEvent.click(screen.getAllByLabelText("Delete conversation")[0]);
+    fireEvent.click(screen.getAllByLabelText("Conversation actions")[0]);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
     fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
     await waitFor(() => expect(screen.queryByText("Kyoto trip")).toBeNull());
     expect(onDeletedActive).toHaveBeenCalled();
+  });
+
+  it("renames a conversation via the kebab menu", async () => {
+    render(<ChatHistory open activeId={null} onSelect={noop} onNew={noop} onDeletedActive={noop} />);
+    await screen.findByText("Kyoto trip");
+    fireEvent.click(screen.getAllByLabelText("Conversation actions")[0]);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    const input = await screen.findByLabelText("Conversation name");
+    fireEvent.change(input, { target: { value: "Kyoto 2026" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(screen.getByText("Kyoto 2026")).toBeTruthy());
   });
 });
