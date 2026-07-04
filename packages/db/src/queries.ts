@@ -176,6 +176,14 @@ export async function setConversationTitle(db: Db, conversationId: string, title
   await db.update(conversations).set({ title }).where(eq(conversations.id, conversationId));
 }
 
+/** Rename a conversation — only if `userId` owns it. Returns whether a row changed (no info leak). */
+export async function renameConversation(db: Db, conversationId: string, userId: string, title: string): Promise<boolean> {
+  const rows = await db.update(conversations).set({ title })
+    .where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)))
+    .returning({ id: conversations.id });
+  return rows.length > 0;
+}
+
 export async function createConversation(db: Db, c: { kbId: string; userId: string; title?: string }) {
   const convId = id("conv");
   await db.insert(conversations).values({ id: convId, kbId: c.kbId, userId: c.userId, title: c.title });

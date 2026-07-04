@@ -2,10 +2,10 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
 import { createDb, schema } from "@gr/db";
-import { createUser, getOrCreatePersonalKb, createConversation, appendMessage } from "@gr/db/queries";
+import { createUser, getOrCreatePersonalKb, createConversation, appendMessage, renameConversation } from "@gr/db/queries";
 import { hashToken } from "../lib/auth.js";
 import { GET as listGet } from "../app/api/conversations/route.js";
-import { GET as detailGet, DELETE as detailDelete } from "../app/api/conversations/[id]/route.js";
+import { GET as detailGet, DELETE as detailDelete, PATCH as detailPatch } from "../app/api/conversations/[id]/route.js";
 
 const URL = process.env.DATABASE_URL ?? "postgres://gr:gr@localhost:5433/gr_test";
 const { db, sql } = createDb(URL);
@@ -18,6 +18,8 @@ async function mkUserToken(id: string, email: string, tok: string) {
 }
 const req = (url: string, tok?: string, method = "GET") =>
   new NextRequest(url, { method, headers: tok ? { authorization: `Bearer ${tok}` } : {} });
+const reqJson = (url: string, tok: string, method: string, body: unknown) =>
+  new NextRequest(url, { method, headers: { authorization: `Bearer ${tok}`, "content-type": "application/json" }, body: JSON.stringify(body) });
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 
 beforeAll(async () => {
@@ -49,6 +51,24 @@ describe("conversations endpoints", () => {
     expect((await ok.json()).messages).toHaveLength(1);
     const denied = await detailGet(req(`http://localhost/api/conversations/${c}`, otherToken), ctx(c));
     expect(denied.status).toBe(404);
+  });
+
+  it("renameConversation only renames the owner's conversation", async () => {
+    const c = await createConversation(db, { kbId, userId: uid, title: "Q" });
+    expect(await renameConversation(db, c, "u_conv_route_other", "nope")).toBe(false);
+    expect(await renameConversation(db, c, uid, "yep")).toBe(true);
+  });
+
+  it("PATCH renames only the caller's conversation and validates input", async () => {
+    const c = await createConversation(db, { kbId, userId: uid, title: "Old" });
+    expect((await detailPatch(req(`http://localhost/api/conversations/${c}`, undefined, "PATCH"), ctx(c))).status).toBe(401);
+    expect((await detailPatch(reqJson(`http://localhost/api/conversations/${c}`, token, "PATCH", { title: "   " }), ctx(c))).status).toBe(400);
+    expect((await detailPatch(reqJson(`http://localhost/api/conversations/${c}`, otherToken, "PATCH", { title: "Hacked" }), ctx(c))).status).toBe(404);
+    const ok = await detailPatch(reqJson(`http://localhost/api/conversations/${c}`, token, "PATCH", { title: "  New name  " }), ctx(c));
+    expect(ok.status).toBe(200);
+    expect((await ok.json()).title).toBe("New name");
+    const detail = await detailGet(req(`http://localhost/api/conversations/${c}`, token), ctx(c));
+    expect((await detail.json()).title).toBe("New name");
   });
 
   it("deletes only the caller's conversation", async () => {
