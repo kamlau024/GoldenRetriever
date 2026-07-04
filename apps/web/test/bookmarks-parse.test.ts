@@ -31,4 +31,20 @@ describe("parseBookmarksHtml", () => {
     expect(parseBookmarksHtml("<html><body>nothing</body></html>")).toEqual([]);
     expect(MAX_BOOKMARK_IMPORT).toBe(50);
   });
+
+  it("drops other non-http schemes and resolves the innermost nested folder", () => {
+    const html = `<DL><p>
+    <DT><A HREF="data:text/html,x">Data</A>
+    <DT><A HREF="file:///etc/passwd">File</A>
+    <DT><H3>Outer</H3>
+    <DL><p>
+      <DT><H3>Inner</H3>
+      <DL><p>
+        <DT><A HREF="https://deep.example/x">Deep</A>
+      </DL><p>
+    </DL><p>
+  </DL><p>`;
+    const out = parseBookmarksHtml(html);
+    expect(out).toEqual([{ url: "https://deep.example/x", title: "Deep", folder: "Inner" }]);
+  });
 });

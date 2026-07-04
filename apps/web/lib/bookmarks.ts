@@ -29,7 +29,7 @@ export function parseBookmarksHtml(html: string): BookmarkEntry[] {
   const seen = new Set<string>();
   const stack: string[] = ["Bookmarks"];
   let pending: string | null = null;
-  const token = /<h3\b[^>]*>([\s\S]*?)<\/h3>|<dl\b[^>]*>|<\/dl\s*>|<a\b[^>]*\shref="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
+  const token = /<h3\b[^>]*>([^<]*)<\/h3>|<dl\b[^>]*>|<\/dl\s*>|<a\b[^>]*\shref="([^"]*)"[^>]*>([^<]*)<\/a>/gi;
   let m: RegExpExecArray | null;
   while ((m = token.exec(html)) !== null) {
     if (m[1] !== undefined) {
