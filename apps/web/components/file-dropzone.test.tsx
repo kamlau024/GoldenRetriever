@@ -50,4 +50,14 @@ describe("FileDropzone", () => {
     expect(screen.getByText("a.pdf")).toBeTruthy();
     expect(screen.queryByLabelText("Upload files")).toBeNull();
   });
+
+  it("accepts a file dropped onto the dropzone", () => {
+    const onAdd = vi.fn();
+    render(<Harness onAdd={onAdd} />);
+    const zone = screen.getByRole("button", { name: /drag/i });
+    fireEvent.dragEnter(zone);
+    fireEvent.drop(zone, { dataTransfer: { files: [pdf("dropped.pdf")] } });
+    expect(onAdd).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("dropped.pdf")).toBeTruthy();
+  });
 });

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 import { FileText, Upload, X } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -40,13 +40,18 @@ function matchesAccept(file: File, accept?: string): boolean {
 
 function FileCard({ file, uploading, onRemove }: { file: File; uploading: boolean; onRemove?: () => void }) {
   const isImage = file.type.startsWith("image/");
-  const url = useMemo(() => (isImage ? URL.createObjectURL(file) : null), [file, isImage]);
-  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
+  const [preview, setPreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isImage) return;
+    const objectUrl = URL.createObjectURL(file);
+    setPreview(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file, isImage]);
   return (
     <div className="flex items-center gap-2 rounded-md border p-2">
-      {url ? (
+      {preview ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt={file.name} className="size-9 shrink-0 rounded object-cover" />
+        <img src={preview} alt={file.name} className="size-9 shrink-0 rounded object-cover" />
       ) : (
         <span className="flex size-9 shrink-0 items-center justify-center rounded bg-muted"><FileText className="size-4 text-muted-foreground" /></span>
       )}
@@ -99,6 +104,7 @@ export function FileDropzone({
     if (disabled) return;
     addFiles(Array.from(e.dataTransfer.files));
   }
+  const onDragOver = (e: DragEvent) => e.preventDefault();
   const onDragEnter = (e: DragEvent) => { e.preventDefault(); dragCount.current++; setActive(true); };
   const onDragLeave = (e: DragEvent) => { e.preventDefault(); dragCount.current--; if (dragCount.current <= 0) setActive(false); };
   const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); inputRef.current?.click(); } };
@@ -112,7 +118,7 @@ export function FileDropzone({
           role="button" tabIndex={disabled ? -1 : 0} aria-disabled={disabled}
           onClick={() => !disabled && inputRef.current?.click()}
           onKeyDown={onKeyDown}
-          onDrop={onDrop} onDragOver={(e) => e.preventDefault()} onDragEnter={onDragEnter} onDragLeave={onDragLeave}
+          onDrop={onDrop} onDragOver={onDragOver} onDragEnter={onDragEnter} onDragLeave={onDragLeave}
           className={cn(
             "flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed p-6 text-center outline-none transition-colors",
             active ? "border-amber-500 bg-amber-50 dark:bg-amber-950/30" : "border-input hover:bg-muted/50",
