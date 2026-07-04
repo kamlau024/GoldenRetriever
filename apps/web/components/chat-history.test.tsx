@@ -64,5 +64,23 @@ describe("ChatHistory", () => {
     fireEvent.change(input, { target: { value: "Kyoto 2026" } });
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(screen.getByText("Kyoto 2026")).toBeTruthy());
+    const patchCalls = (globalThis.fetch as unknown as { mock: { calls: [string, RequestInit?][] } })
+      .mock.calls.filter(([, init]) => init?.method === "PATCH");
+    expect(patchCalls).toHaveLength(1);
+  });
+
+  it("Escape cancels the rename (no PATCH)", async () => {
+    render(<ChatHistory open activeId={null} onSelect={noop} onNew={noop} onDeletedActive={noop} />);
+    await screen.findByText("Kyoto trip");
+    fireEvent.click(screen.getAllByLabelText("Conversation actions")[0]);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    const input = await screen.findByLabelText("Conversation name");
+    fireEvent.change(input, { target: { value: "Should not be saved" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByLabelText("Conversation name")).toBeNull();
+    expect(screen.getByText("Kyoto trip")).toBeTruthy();
+    const patchCalls = (globalThis.fetch as unknown as { mock: { calls: [string, RequestInit?][] } })
+      .mock.calls.filter(([, init]) => init?.method === "PATCH");
+    expect(patchCalls).toHaveLength(0);
   });
 });

@@ -33,6 +33,10 @@ export function ChatHistory({ open, activeId, onSelect, onNew, onDeletedActive }
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ConversationSummary | null>(null);
   const editRef = useRef<HTMLInputElement>(null);
+  const savingRef = useRef(false);
+
+  // Re-arm the guard whenever a new edit session starts.
+  useEffect(() => { if (editingId) savingRef.current = false; }, [editingId]);
 
   const load = useCallback(async () => {
     try {
@@ -60,6 +64,8 @@ export function ChatHistory({ open, activeId, onSelect, onNew, onDeletedActive }
   }
 
   async function save(id: string, raw: string) {
+    if (savingRef.current) return;
+    savingRef.current = true;
     const title = raw.trim().slice(0, 200);
     setEditingId(null);
     const current = items?.find((x) => x.id === id);
