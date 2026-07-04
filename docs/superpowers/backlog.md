@@ -78,6 +78,17 @@ Living list of outstanding work, so nothing planned-but-skipped gets lost. Updat
   audit callers; (e) the inline-rename input is uncontrolled (`defaultValue`) — fine given the mount/unmount
   lifecycle, revisit only if the input is ever reused across edit sessions.
 
+- **Bookmark import — follow-ups** *(deferred from the bookmark-import review, 2026-07-04, all Minor)* —
+  (a) `apps/web/lib/bookmarks.ts`: parser only matches double-quoted `href="…"` and a minimal named-entity map
+  (`&amp; &lt; &gt; &quot; &apos; &nbsp;` + numeric); all major browsers export double-quoted with those, but a
+  third-party exporter using single quotes or `&mdash;`/`&hellip;` etc. would drop/mis-title — widen if it comes up;
+  (b) `api/import/bookmarks`: the per-job worker trigger is fire-and-forget (`void fetch`), so a failed hand-off
+  silently orphans a queued job (mirrors `/api/ingest` — the systemic queue-drain hardening / Vercel Queues item);
+  (c) **browser-extension one-click import (Phase 2)** — a WXT/Chrome extension reading `chrome.bookmarks` that
+  POSTs to `/api/import/bookmarks`, avoiding the manual export/upload step; (d) **de-dupe against pages already in
+  the library** so re-importing a bookmarks file doesn't create duplicate documents; (e) watch the 4-tab
+  `TabsList` (Text/URL/File/Import) on very narrow mobile widths.
+
 ## Future stages (roadmap — `specs/2026-06-14-goldenretriever-architecture-design.md`)
 - **Conversational memory** *(design in progress, 2026-06-30 — spec to land in `specs/`)* — two layers:
   (a) **within-conversation** memory so follow-ups work (feed prior turns of the active thread to the
