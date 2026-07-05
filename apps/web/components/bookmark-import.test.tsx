@@ -17,23 +17,33 @@ const uploadFile = (html: string) => {
   fireEvent.change(input, { target: { files: [file] } });
 };
 
-beforeEach(() => vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ queued: 2, skipped: 0 }) }) as Response)));
+beforeEach(() => vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ queued: 1, skipped: 0, failed: 0 }) }) as Response)));
 afterEach(() => vi.unstubAllGlobals());
 
 describe("BookmarkImport", () => {
-  it("previews parsed bookmarks and imports the selection", async () => {
+  it("imports each selected bookmark individually and shows the finished count", async () => {
     render(<BookmarkImport kbId="kb1" />);
     uploadFile(SAMPLE);
-    expect(await screen.findByText(/Found 2 bookmarks/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Import 2/ }));
-    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith(
-      "/api/import/bookmarks",
-      expect.objectContaining({ method: "POST" }),
-    ));
-    const body = JSON.parse((globalThis.fetch as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0][1].body as string);
-    expect(body.kbId).toBe("kb1");
-    expect(body.items).toHaveLength(2);
-    expect(body.items.map((i: { url: string }) => i.url)).toContain("https://a.example/1");
+    fireEvent.click(await screen.findByRole("button", { name: /Import 2/ }));
+    await waitFor(() => expect((globalThis.fetch as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(2));
+    for (const call of (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls) {
+      expect(JSON.parse(String((call[1] as RequestInit).body)).items).toHaveLength(1);
+    }
+    await waitFor(() => expect(screen.getByText(/Imported 2 pages/)).toBeTruthy());
+  });
+
+  it("shows per-bookmark done and failed statuses", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      const item = JSON.parse(String(init.body)).items[0];
+      const failed = item.url.includes("b.example");
+      return { ok: true, json: async () => ({ queued: failed ? 0 : 1, skipped: 0, failed: failed ? 1 : 0 }) } as Response;
+    }));
+    render(<BookmarkImport kbId="kb1" />);
+    uploadFile(SAMPLE);
+    fireEvent.click(await screen.findByRole("button", { name: /Import 2/ }));
+    expect(await screen.findByRole("img", { name: "done" })).toBeTruthy();
+    expect(await screen.findByRole("img", { name: "failed" })).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/Imported 1 page/)).toBeTruthy());
   });
 
   it("disables import when more than the cap is selected", async () => {
