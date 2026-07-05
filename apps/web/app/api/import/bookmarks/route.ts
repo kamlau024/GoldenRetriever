@@ -34,26 +34,33 @@ export async function POST(req: NextRequest) {
 
   let queued = 0;
   let skipped = 0;
+  let failed = 0;
   for (const item of items) {
     const url = typeof item?.url === "string" ? item.url.trim() : "";
     if (!url || !(await isSafeHttpUrl(url))) { skipped++; continue; }
     const title = typeof item?.title === "string" && item.title.trim() ? item.title.trim().slice(0, 300) : null;
-    const { documentId, jobId } = await enqueueIngestion(db, {
-      kbId, addedBy: principal.userId, captureMode: "url_fetch", kind: "web", mimeType: null,
-      sourceUrl: url, title, rawContent: "",
-    });
-    queued++;
-    if (base) {
-      void fetch(`${base}/api/worker`, {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-worker-secret": process.env.WORKER_SECRET ?? "" },
-        body: JSON.stringify({ jobId, documentId }),
+    try {
+      const { documentId, jobId } = await enqueueIngestion(db, {
+        kbId, addedBy: principal.userId, captureMode: "url_fetch", kind: "web", mimeType: null,
+        sourceUrl: url, title, rawContent: "",
       });
-    } else {
-      await processJob(db, deps!.ai, deps!.converter, deps!.urlFetcher, {
-        documentId, kbId, mimeType: null, text: "", sourceUrl: url, filename: title,
-      });
+      if (base) {
+        void fetch(`${base}/api/worker`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-worker-secret": process.env.WORKER_SECRET ?? "" },
+          body: JSON.stringify({ jobId, documentId }),
+        });
+      } else {
+        // In-process (no worker configured): fetch/convert/embed here. A single page that blocks
+        // bots, times out, or yields no text must NOT fail the whole import — count it and move on.
+        await processJob(db, deps!.ai, deps!.converter, deps!.urlFetcher, {
+          documentId, kbId, mimeType: null, text: "", sourceUrl: url, filename: title,
+        });
+      }
+      queued++;
+    } catch {
+      failed++;
     }
   }
-  return NextResponse.json({ queued, skipped }, { status: 202 });
+  return NextResponse.json({ queued, skipped, failed }, { status: 202 });
 }

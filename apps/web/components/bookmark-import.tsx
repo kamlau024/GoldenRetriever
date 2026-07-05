@@ -75,8 +75,12 @@ export function BookmarkImport({ kbId }: { kbId: string }) {
         body: JSON.stringify({ kbId, items }),
       });
       if (!res.ok) throw new Error();
-      const { queued } = await res.json() as { queued: number };
-      toast.success(`Importing ${queued} page${queued === 1 ? "" : "s"} — they'll appear as they finish.`);
+      const { queued, failed = 0 } = await res.json() as { queued: number; skipped: number; failed?: number };
+      if (queued === 0) {
+        toast.error(failed > 0 ? "None of those pages could be fetched. Try different bookmarks." : "Nothing was imported.");
+        return;
+      }
+      toast.success(`Imported ${queued} page${queued === 1 ? "" : "s"}${failed > 0 ? ` — ${failed} couldn't be fetched` : ""}.`);
       setEntries(null); setSelected(new Set()); setFile(null);
       router.refresh();
     } catch {
@@ -134,7 +138,7 @@ export function BookmarkImport({ kbId }: { kbId: string }) {
             <span className={cn("text-xs", overCap ? "text-destructive" : "text-muted-foreground")}>
               {count} selected{overCap ? ` — Select up to ${MAX_BOOKMARK_IMPORT} pages per import` : ""}
             </span>
-            <Button disabled={!canImport} onClick={doImport}>Import {count} page{count === 1 ? "" : "s"}</Button>
+            <Button disabled={!canImport} onClick={doImport}>{busy ? "Importing…" : `Import ${count} page${count === 1 ? "" : "s"}`}</Button>
           </div>
         </div>
       )}
