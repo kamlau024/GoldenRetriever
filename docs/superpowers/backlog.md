@@ -108,6 +108,14 @@ Living list of outstanding work, so nothing planned-but-skipped gets lost. Updat
   in `pending` — delete it (or mark it `error`) in the catch; (b) the "couldn't be fetched" copy also covers
   embed/convert/rate-limit failures — reword once the failure reason is surfaced.
 
+- **Import progress — follow-ups** *(deferred from the import-progress review, 2026-07-05, all Minor)* —
+  (a) `components/bookmark-import.tsx`: add a test for the `skipped` status path (`{queued:0, skipped:1}` →
+  `getByRole("img",{name:"skipped"})`); (b) the finished summary reads "Imported 0 pages · K skipped" when every
+  bookmark was skipped — reword (e.g. "All K already saved / skipped"); (c) `lib/pool.ts`: convert `runNext`
+  recursion to an iterative `while` loop (purely stylistic — recursion depth is ≤13 at the 50-item cap); (d) add
+  `aria-valuetext={`${completed} of ${total}`}` to the progress bar for screen readers; (e) **cancel an
+  in-progress import** via `AbortController` (also noted out-of-scope in the spec).
+
 ## Future stages (roadmap — `specs/2026-06-14-goldenretriever-architecture-design.md`)
 - **Conversational memory** *(design in progress, 2026-06-30 — spec to land in `specs/`)* — two layers:
   (a) **within-conversation** memory so follow-ups work (feed prior turns of the active thread to the

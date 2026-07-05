@@ -1,3 +1,188 @@
+# Import Progress Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Show live per-bookmark import progress (status per bookmark + an overall bar) by importing one bookmark per request from the client.
+
+**Architecture:** Task 1 adds a bounded-concurrency `runPool` helper. Task 2 rewrites `bookmark-import.tsx`'s import from a single bulk POST into a client-driven pool that POSTs one bookmark at a time to the existing endpoint, updating per-item status + an overall bar. No server change.
+
+**Tech Stack:** Next.js 15, React 19, Tailwind v4, Vitest (node + jsdom), lucide-react.
+
+## Global Constraints
+
+- No change to `/api/import/bookmarks` or any server code — the client loops over the existing endpoint (one-item `items` array per request). Server already enforces auth/SSRF/validation.
+- `IMPORT_CONCURRENCY = 4`, defined once in `bookmark-import.tsx`.
+- Reuse `Button`, lucide icons, `cn`; native Tailwind progress bar (no new dependency); the `max-h-72 overflow-y-auto` scroll container from the recent fix.
+- Status icons carry `aria-label={status}` (accessible + testable). The overall bar is `role="progressbar"` with `aria-valuenow/min/max`.
+- `@/` alias → `apps/web`. Component tests: `pnpm --filter @gr/web exec vitest run components/<file>`. Node tests: `bash scripts/test.sh <path>`.
+
+---
+
+### Task 1: `runPool` bounded-concurrency helper
+
+**Files:**
+- Create: `apps/web/lib/pool.ts`
+- Test: `apps/web/test/pool.test.ts`
+
+**Interfaces:**
+- Produces `runPool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void>` (consumed by Task 2).
+
+- [ ] **Step 1: Write the failing test**
+
+Create `apps/web/test/pool.test.ts`:
+
+```ts
+import { describe, it, expect } from "vitest";
+import { runPool } from "../lib/pool.js";
+
+const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+describe("runPool", () => {
+  it("processes every item exactly once", async () => {
+    const seen: number[] = [];
+    await runPool([1, 2, 3, 4, 5], 2, async (n) => { seen.push(n); });
+    expect(seen.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it("never exceeds the concurrency limit but does run concurrently", async () => {
+    let active = 0;
+    let maxActive = 0;
+    await runPool(Array.from({ length: 10 }, (_, i) => i), 3, async () => {
+      active++; maxActive = Math.max(maxActive, active);
+      await delay(5);
+      active--;
+    });
+    expect(maxActive).toBeLessThanOrEqual(3);
+    expect(maxActive).toBeGreaterThan(1);
+  });
+
+  it("resolves immediately for an empty list and never calls the worker", async () => {
+    await expect(runPool([], 4, async () => { throw new Error("should not run"); })).resolves.toBeUndefined();
+  });
+});
+```
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `bash scripts/test.sh apps/web/test/pool.test.ts`
+Expected: FAIL — `Cannot find module '../lib/pool.js'`.
+
+- [ ] **Step 3: Implement**
+
+Create `apps/web/lib/pool.ts`:
+
+```ts
+/** Run `worker` over `items` with at most `limit` concurrent workers; resolves when all complete. */
+export async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
+  let index = 0;
+  const runNext = async (): Promise<void> => {
+    const i = index++;
+    if (i >= items.length) return;
+    await worker(items[i]);
+    await runNext();
+  };
+  const workers = Math.min(Math.max(limit, 1), items.length);
+  await Promise.all(Array.from({ length: workers }, () => runNext()));
+}
+```
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `bash scripts/test.sh apps/web/test/pool.test.ts`
+Expected: PASS (3 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/web/lib/pool.ts apps/web/test/pool.test.ts
+git commit -m "feat(web): runPool bounded-concurrency helper"
+```
+
+---
+
+### Task 2: Per-bookmark import progress in `bookmark-import.tsx`
+
+**Files:**
+- Modify: `apps/web/components/bookmark-import.tsx` (full replacement below)
+- Test: `apps/web/components/bookmark-import.test.tsx`
+
+**Interfaces:**
+- Consumes `runPool` from `@/lib/pool` (Task 1) and the existing `POST /api/import/bookmarks` (one-item body → `{ queued, skipped, failed }`).
+
+- [ ] **Step 1: Update the tests**
+
+Replace the body of `apps/web/components/bookmark-import.test.tsx` (keep the top `vi.mock` lines and the `SAMPLE`/`uploadFile` helpers) so the import expectations match the per-item loop. The full file:
+
+```tsx
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+import { BookmarkImport } from "./bookmark-import.js";
+
+const SAMPLE = `<!DOCTYPE NETSCAPE-Bookmark-file-1><DL><p>
+<DT><A HREF="https://a.example/1">Alpha</A>
+<DT><H3>Work</H3><DL><p>
+<DT><A HREF="https://b.example/2">Beta</A>
+</DL><p></DL><p>`;
+
+const uploadFile = (html: string) => {
+  const input = screen.getByLabelText("Bookmarks file") as HTMLInputElement;
+  const file = new File([html], "bookmarks.html", { type: "text/html" });
+  fireEvent.change(input, { target: { files: [file] } });
+};
+
+beforeEach(() => vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ queued: 1, skipped: 0, failed: 0 }) }) as Response)));
+afterEach(() => vi.unstubAllGlobals());
+
+describe("BookmarkImport", () => {
+  it("imports each selected bookmark individually and shows the finished count", async () => {
+    render(<BookmarkImport kbId="kb1" />);
+    uploadFile(SAMPLE);
+    fireEvent.click(await screen.findByRole("button", { name: /Import 2/ }));
+    await waitFor(() => expect((globalThis.fetch as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(2));
+    for (const call of (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls) {
+      expect(JSON.parse(String((call[1] as RequestInit).body)).items).toHaveLength(1);
+    }
+    await waitFor(() => expect(screen.getByText(/Imported 2 pages/)).toBeTruthy());
+  });
+
+  it("shows per-bookmark done and failed statuses", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      const item = JSON.parse(String(init.body)).items[0];
+      const failed = item.url.includes("b.example");
+      return { ok: true, json: async () => ({ queued: failed ? 0 : 1, skipped: 0, failed: failed ? 1 : 0 }) } as Response;
+    }));
+    render(<BookmarkImport kbId="kb1" />);
+    uploadFile(SAMPLE);
+    fireEvent.click(await screen.findByRole("button", { name: /Import 2/ }));
+    expect(await screen.findByRole("img", { name: "done" })).toBeTruthy();
+    expect(await screen.findByRole("img", { name: "failed" })).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/Imported 1 page/)).toBeTruthy());
+  });
+
+  it("disables import when more than the cap is selected", async () => {
+    const many = Array.from({ length: 51 }, (_, i) => `<DT><A HREF="https://x.example/${i}">L${i}</A>`).join("\n");
+    render(<BookmarkImport kbId="kb1" />);
+    uploadFile(`<DL><p>${many}</DL><p>`);
+    expect(await screen.findByText(/Found 51 bookmarks/)).toBeTruthy();
+    expect(screen.getByText(/Select up to 50/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Import/ })).toHaveProperty("disabled", true);
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify failure**
+
+Run: `pnpm --filter @gr/web exec vitest run components/bookmark-import.test.tsx`
+Expected: FAIL — the current component sends one bulk POST (fetch called once, items length 2) and renders no `done`/`failed` labels or "Imported 2 pages" progress text.
+
+- [ ] **Step 3: Replace `bookmark-import.tsx`**
+
+Replace the entire file `apps/web/components/bookmark-import.tsx` with:
+
+```tsx
 "use client";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -116,7 +301,7 @@ export function BookmarkImport({ kbId }: { kbId: string }) {
 
   function reset() {
     setPhase("select"); setEntries(null); setSelected(new Set()); setFile(null);
-    setImportItems([]); setStatuses({}); setCompleted(0); setOpen(new Set());
+    setImportItems([]); setStatuses({}); setCompleted(0);
   }
 
   const total = importItems.length;
@@ -207,3 +392,29 @@ export function BookmarkImport({ kbId }: { kbId: string }) {
     </div>
   );
 }
+```
+
+Note: `toast` and `busy` are removed (progress replaces toasts and the busy flag). Do not leave an unused `sonner` import.
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `pnpm --filter @gr/web exec vitest run components/bookmark-import.test.tsx`
+Expected: PASS (3 tests).
+
+- [ ] **Step 5: Typecheck & commit**
+
+```bash
+pnpm --filter @gr/web typecheck
+git add apps/web/components/bookmark-import.tsx apps/web/components/bookmark-import.test.tsx
+git commit -m "feat(web): per-bookmark import progress (client-driven pool)"
+```
+
+---
+
+## Final verification (before finishing the branch)
+
+- [ ] Full component suite: `pnpm --filter @gr/web exec vitest run` — all green.
+- [ ] Full node/DB suite: `bash scripts/test.sh` — all green (no server change; confirm nothing broke).
+- [ ] Typecheck: `pnpm --filter @gr/web typecheck` — clean.
+- [ ] Manual: import several bookmarks → the folder tree is replaced by a progress bar + per-bookmark list; each row goes ⏳ → spinner → ✓/✗; the bar fills to N/N; a summary + **Done** button appear; **Done** returns to the upload state and the Library shows the new pages.
+```
