@@ -89,6 +89,14 @@ Living list of outstanding work, so nothing planned-but-skipped gets lost. Updat
   the library** so re-importing a bookmarks file doesn't create duplicate documents; (e) watch the 4-tab
   `TabsList` (Text/URL/File/Import) on very narrow mobile widths.
 
+- **File dropzone — follow-ups** *(deferred from the file-dropzone review, 2026-07-04, all Minor)* —
+  (a) `components/add-content.tsx`: the File-tab `uploading` set is keyed by filename, so two dropped files with
+  the same name share one key and one's indeterminate bar clears early — key by name+size+lastModified if it
+  matters; (b) `components/ui/file-dropzone.tsx`: `aria-disabled="false"` is emitted when enabled (harmless ARIA
+  noise) and the remove-button suppression uses `onRemove === undefined` rather than a named `canRemove` — cosmetic;
+  (c) optional real byte-percent upload progress via `XMLHttpRequest` (currently an indeterminate bar); (d) optional
+  directory/folder drop support.
+
 ## Future stages (roadmap — `specs/2026-06-14-goldenretriever-architecture-design.md`)
 - **Conversational memory** *(design in progress, 2026-06-30 — spec to land in `specs/`)* — two layers:
   (a) **within-conversation** memory so follow-ups work (feed prior turns of the active thread to the
