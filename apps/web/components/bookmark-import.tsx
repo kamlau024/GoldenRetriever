@@ -1,10 +1,10 @@
 "use client";
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { FileDropzone } from "@/components/ui/file-dropzone";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { parseBookmarksHtml, MAX_BOOKMARK_IMPORT, type BookmarkEntry } from "@/lib/bookmarks";
@@ -25,6 +25,7 @@ export function BookmarkImport({ kbId }: { kbId: string }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
 
   const folders = useMemo(() => {
     const map = new Map<string, BookmarkEntry[]>();
@@ -32,14 +33,15 @@ export function BookmarkImport({ kbId }: { kbId: string }) {
     return [...map.entries()];
   }, [entries]);
 
-  async function onFile(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    const parsed = parseBookmarksHtml(await readText(file));
+  async function loadFile(f: File) {
+    const parsed = parseBookmarksHtml(await readText(f));
     setEntries(parsed);
     setSelected(new Set(parsed.map((p) => p.url)));
     setOpen(new Set());
+  }
+  function onValueChange(fs: File[]) {
+    setFile(fs[0] ?? null);
+    if (fs.length === 0) { setEntries(null); setSelected(new Set()); }
   }
 
   function toggle(url: string) {
@@ -76,7 +78,7 @@ export function BookmarkImport({ kbId }: { kbId: string }) {
       if (!res.ok) throw new Error();
       const { queued } = await res.json() as { queued: number };
       toast.success(`Importing ${queued} page${queued === 1 ? "" : "s"} — they'll appear as they finish.`);
-      setEntries(null); setSelected(new Set());
+      setEntries(null); setSelected(new Set()); setFile(null);
       router.refresh();
     } catch {
       toast.error("Couldn't import those bookmarks. Please try again.");
@@ -87,8 +89,11 @@ export function BookmarkImport({ kbId }: { kbId: string }) {
 
   return (
     <div className="space-y-3">
-      <label className="text-sm text-muted-foreground">Upload your browser's exported bookmarks file (.html)</label>
-      <Input type="file" accept=".html,.htm" aria-label="Bookmarks file" disabled={busy} className="w-full" onChange={onFile} />
+      <label className="text-sm text-muted-foreground">Upload your browser&apos;s exported bookmarks file (.html)</label>
+      <FileDropzone
+        value={file ? [file] : []} onValueChange={onValueChange} onAdd={([f]) => { if (f) loadFile(f); }}
+        accept=".html,.htm" maxFileCount={1} ariaLabel="Bookmarks file"
+      />
 
       {entries && (
         <div className="space-y-2">
