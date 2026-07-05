@@ -97,6 +97,17 @@ Living list of outstanding work, so nothing planned-but-skipped gets lost. Updat
   (c) optional real byte-percent upload progress via `XMLHttpRequest` (currently an indeterminate bar); (d) optional
   directory/folder drop support.
 
+- **Bookmark import — async + robustness** *(from the 2026-07-04 in-process 500 fix)* — `APP_URL` is unset in
+  prod, so `/api/import/bookmarks` (and `/api/ingest` URL-save) process **in-process, synchronously** per URL.
+  The per-URL `try/catch` fix stops one bad page from 500-ing the whole import, but the request still **blocks**
+  while it fetches/converts/embeds each page sequentially — slow for large imports and near the function timeout at
+  the 50 cap. Proper fix: move bulk ingest to a real background queue (**Vercel Queues**, or `waitUntil`/`after()`
+  to survive past the response, or a cron that drains `ingestionJobs` status='queued'). The existing async path
+  (`void fetch('/api/worker')` gated on `APP_URL`) is fire-and-forget and unreliable on Vercel — that's why
+  `APP_URL` was left unset. Also: (a) a URL whose in-process `processJob` throws leaves an orphaned document row
+  in `pending` — delete it (or mark it `error`) in the catch; (b) the "couldn't be fetched" copy also covers
+  embed/convert/rate-limit failures — reword once the failure reason is surfaced.
+
 ## Future stages (roadmap — `specs/2026-06-14-goldenretriever-architecture-design.md`)
 - **Conversational memory** *(design in progress, 2026-06-30 — spec to land in `specs/`)* — two layers:
   (a) **within-conversation** memory so follow-ups work (feed prior turns of the active thread to the
