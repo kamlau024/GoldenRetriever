@@ -2,7 +2,6 @@
 import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 import { FileText, Upload, X } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 export interface FileDropzoneProps {
@@ -136,7 +135,7 @@ export function FileDropzone({
       )}
 
       {value.length > 0 && (
-        <ScrollArea className="max-h-52">
+        <div className="max-h-52 overflow-y-auto">
           <div className="space-y-1.5">
             {value.map((f) => (
               <FileCard
@@ -147,7 +146,7 @@ export function FileDropzone({
               />
             ))}
           </div>
-        </ScrollArea>
+        </div>
       )}
     </div>
   );

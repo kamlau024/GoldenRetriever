@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FileDropzone } from "@/components/ui/file-dropzone";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { parseBookmarksHtml, MAX_BOOKMARK_IMPORT, type BookmarkEntry } from "@/lib/bookmarks";
 
@@ -104,7 +103,7 @@ export function BookmarkImport({ kbId }: { kbId: string }) {
             </button>
           </div>
 
-          <ScrollArea className="max-h-72 rounded-md border">
+          <div className="max-h-72 overflow-y-auto rounded-md border">
             <div className="p-1">
               {folders.map(([folder, items]) => {
                 const allOn = items.every((i) => selected.has(i.url));
@@ -129,7 +128,7 @@ export function BookmarkImport({ kbId }: { kbId: string }) {
                 );
               })}
             </div>
-          </ScrollArea>
+          </div>
 
           <div className="flex items-center justify-between">
             <span className={cn("text-xs", overCap ? "text-destructive" : "text-muted-foreground")}>
