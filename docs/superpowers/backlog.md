@@ -124,6 +124,14 @@ Living list of outstanding work, so nothing planned-but-skipped gets lost. Updat
   finished screen that re-imports just the `failed` items (useful for transient `rate-limited`/`server-error`
   reasons; dead domains / `blocked` won't benefit). Would reuse the existing per-item pool + reason display.
 
+- **Library redesign — follow-ups** *(deferred from the library-redesign review, 2026-07-13, all Minor)* —
+  (a) `components/add-content.tsx`: the `<Tabs>` block is over-indented after the Card→div strip — a formatting-only
+  pass; (b) `components/library-list.tsx`: `Tags` shows only the first 6 tags (`slice(0,6)`), so a doc's 7th+ tag
+  can't be clicked to filter — consider a dedicated chip row of *all* unique tags above the cards (also makes
+  filtering complete, not limited to visible cards); (c) `library-list.test.tsx`: the "removes a tag via ×" test
+  should also click **Clear** and assert the full list returns; (d) manual smoke: the Add modal's `max-h-[90vh]
+  overflow-y-auto` — verify the File tab's dropzone with ~10 files doesn't overflow awkwardly on a small viewport.
+
 ## Future stages (roadmap — `specs/2026-06-14-goldenretriever-architecture-design.md`)
 - **Conversational memory** *(design in progress, 2026-06-30 — spec to land in `specs/`)* — two layers:
   (a) **within-conversation** memory so follow-ups work (feed prior turns of the active thread to the
