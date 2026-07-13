@@ -48,12 +48,16 @@ describe("LibraryList tag filtering", () => {
   it("filters by a clicked tag, hides untagged docs, and shows Clear + a pill", () => {
     render(<LibraryList docs={tagged} />);
     expect(screen.getByText("Untagged note")).toBeTruthy();
+    // before clicking, the kyoto tag button is not pressed
+    expect(screen.getByRole("button", { name: "kyoto" }).getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(screen.getByRole("button", { name: "kyoto" }));
     expect(screen.getByText("Kyoto guide")).toBeTruthy();
     expect(screen.queryByText("Osaka food")).toBeNull();     // lacks 'kyoto'
     expect(screen.queryByText("Untagged note")).toBeNull();  // untagged hidden
     expect(screen.getByRole("button", { name: "Clear" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Remove kyoto" })).toBeTruthy();
+    // after filtering, the sole remaining kyoto tag button reflects the pressed state
+    expect(screen.getByRole("button", { name: "kyoto" }).getAttribute("aria-pressed")).toBe("true");
   });
 
   it("ANDs multiple selected tags", () => {

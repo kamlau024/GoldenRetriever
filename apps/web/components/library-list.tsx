@@ -29,13 +29,13 @@ function TitleLink({ doc }: { doc: LibraryDoc }) {
     : <a href={href} target="_blank" rel="noopener noreferrer" className="truncate hover:underline">{label}</a>;
 }
 
-function Tags({ tags, onClick }: { tags: string[]; onClick?: (tag: string) => void }) {
+function Tags({ tags, onClick, isSelected }: { tags: string[]; onClick?: (tag: string) => void; isSelected?: (tag: string) => boolean }) {
   if (!tags.length) return null;
   const cls = "rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground";
   return (
     <span className="flex flex-wrap gap-1">
       {tags.slice(0, 6).map((t) => onClick ? (
-        <button key={t} type="button" onClick={() => onClick(t)} className={cn(cls, "hover:bg-amber-100 hover:text-amber-900 dark:hover:bg-amber-950/60 dark:hover:text-amber-100")}>{t}</button>
+        <button key={t} type="button" onClick={() => onClick(t)} aria-pressed={isSelected?.(t) ?? false} className={cn(cls, "hover:bg-amber-100 hover:text-amber-900 dark:hover:bg-amber-950/60 dark:hover:text-amber-100", isSelected?.(t) && "bg-amber-100 text-amber-900 ring-1 ring-amber-400 dark:bg-amber-950/60 dark:text-amber-100")}>{t}</button>
       ) : (
         <span key={t} className={cls}>{t}</span>
       ))}
@@ -62,8 +62,8 @@ function DeleteDoc({ label, disabled, onConfirm }: { label: string; disabled: bo
   );
 }
 
-export function DocCards({ docs, busy, onDelete, onTagClick }: {
-  docs: LibraryDoc[]; busy: string | null; onDelete: (id: string) => void; onTagClick?: (tag: string) => void;
+export function DocCards({ docs, busy, onDelete, onTagClick, isTagSelected }: {
+  docs: LibraryDoc[]; busy: string | null; onDelete: (id: string) => void; onTagClick?: (tag: string) => void; isTagSelected?: (tag: string) => boolean;
 }) {
   return (
     <div className="space-y-2">
@@ -78,7 +78,7 @@ export function DocCards({ docs, busy, onDelete, onTagClick }: {
             <Badge variant="secondary">{sourceLabel(d.captureMode)}</Badge>
             <span>{relativeTime(d.capturedAt)}</span>
           </div>
-          {d.tags.length ? <div className="mt-2"><Tags tags={d.tags} onClick={onTagClick} /></div> : null}
+          {d.tags.length ? <div className="mt-2"><Tags tags={d.tags} onClick={onTagClick} isSelected={isTagSelected} /></div> : null}
         </Card>
       ))}
     </div>
@@ -133,7 +133,7 @@ export function LibraryList({ docs }: { docs: LibraryDoc[] }) {
       {visible.length === 0 ? (
         <Card className="p-6 text-center text-sm text-muted-foreground">No documents match the selected tags.</Card>
       ) : (
-        <DocCards docs={visible} busy={busy} onDelete={remove} onTagClick={addTag} />
+        <DocCards docs={visible} busy={busy} onDelete={remove} onTagClick={addTag} isTagSelected={(t) => selected.has(t)} />
       )}
     </div>
   );
