@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { createDb, schema } from "@gr/db";
 import { getOrCreatePersonalKb } from "@gr/db/queries";
-import { isSafeHttpUrl } from "@gr/ingest";
+import { assertSafeHttpUrl } from "@gr/ingest";
 import { resolveAuth } from "../../../../lib/clerk-auth.js";
 import { enqueueIngestion, processJob, resolveIngestDeps } from "../../../../lib/ingest-service.js";
 import { MAX_BOOKMARK_IMPORT } from "../../../../lib/bookmarks.js";
+import { classifyImportError, type ReasonCode } from "../../../../lib/import-reason.js";
 
 export async function POST(req: NextRequest) {
   const { db } = createDb();
@@ -35,9 +36,16 @@ export async function POST(req: NextRequest) {
   let queued = 0;
   let skipped = 0;
   let failed = 0;
+  const results: { url: string; outcome: "done" | "queued" | "skipped" | "failed"; reason?: ReasonCode }[] = [];
+
   for (const item of items) {
     const url = typeof item?.url === "string" ? item.url.trim() : "";
-    if (!url || !(await isSafeHttpUrl(url))) { skipped++; continue; }
+    if (!url) { skipped++; results.push({ url: "", outcome: "skipped", reason: "unsupported-url" }); continue; }
+
+    // Safety / reachability pre-check — a throw here means we never fetch, and no document is created.
+    try { await assertSafeHttpUrl(url); }
+    catch (e) { skipped++; results.push({ url, outcome: "skipped", reason: classifyImportError(e) }); continue; }
+
     const title = typeof item?.title === "string" && item.title.trim() ? item.title.trim().slice(0, 300) : null;
     try {
       const { documentId, jobId } = await enqueueIngestion(db, {
@@ -50,17 +58,20 @@ export async function POST(req: NextRequest) {
           headers: { "content-type": "application/json", "x-worker-secret": process.env.WORKER_SECRET ?? "" },
           body: JSON.stringify({ jobId, documentId }),
         });
+        results.push({ url, outcome: "queued" });
       } else {
         // In-process (no worker configured): fetch/convert/embed here. A single page that blocks
-        // bots, times out, or yields no text must NOT fail the whole import — count it and move on.
+        // bots, times out, or yields no text must NOT fail the whole import — record why and move on.
         await processJob(db, deps!.ai, deps!.converter, deps!.urlFetcher, {
           documentId, kbId, mimeType: null, text: "", sourceUrl: url, filename: title,
         });
+        results.push({ url, outcome: "done" });
       }
       queued++;
-    } catch {
+    } catch (e) {
       failed++;
+      results.push({ url, outcome: "failed", reason: classifyImportError(e) });
     }
   }
-  return NextResponse.json({ queued, skipped, failed }, { status: 202 });
+  return NextResponse.json({ queued, skipped, failed, results }, { status: 202 });
 }
