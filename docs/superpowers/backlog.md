@@ -116,6 +116,14 @@ Living list of outstanding work, so nothing planned-but-skipped gets lost. Updat
   `aria-valuetext={`${completed} of ${total}`}` to the progress bar for screen readers; (e) **cancel an
   in-progress import** via `AbortController` (also noted out-of-scope in the spec).
 
+- **Flaky test: `chat-history.test.tsx > Escape cancels the rename (no PATCH)`** *(observed 2026-07-13)* — passes
+  standalone (6/6 repeatedly) and in the canonical component suite (37/37) but blipped once under the heavier
+  combined `scripts/test.sh` run. Likely a fireEvent/async-state timing sensitivity (the Escape → unmount → assert
+  window). Harden it (e.g. `await waitFor` the input's removal before asserting no PATCH, or use `userEvent`).
+- **Import "Retry failed"** *(deferred from the import-reasons scope decision, 2026-07-13)* — a button on the
+  finished screen that re-imports just the `failed` items (useful for transient `rate-limited`/`server-error`
+  reasons; dead domains / `blocked` won't benefit). Would reuse the existing per-item pool + reason display.
+
 ## Future stages (roadmap — `specs/2026-06-14-goldenretriever-architecture-design.md`)
 - **Conversational memory** *(design in progress, 2026-06-30 — spec to land in `specs/`)* — two layers:
   (a) **within-conversation** memory so follow-ups work (feed prior turns of the active thread to the
