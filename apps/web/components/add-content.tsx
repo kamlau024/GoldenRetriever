@@ -2,7 +2,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,10 +58,8 @@ export function AddContent({ kbId }: { kbId: string }) {
   }
 
   return (
-    <Card>
-      <CardHeader><CardTitle>Add to your library</CardTitle></CardHeader>
-      <CardContent>
-        <Tabs defaultValue="text">
+    <div>
+      <Tabs defaultValue="text">
           <TabsList>
             <TabsTrigger value="text">Text</TabsTrigger>
             <TabsTrigger value="url">URL</TabsTrigger>
@@ -95,7 +92,6 @@ export function AddContent({ kbId }: { kbId: string }) {
             <BookmarkImport kbId={kbId} />
           </TabsContent>
         </Tabs>
-      </CardContent>
-    </Card>
+    </div>
   );
 }

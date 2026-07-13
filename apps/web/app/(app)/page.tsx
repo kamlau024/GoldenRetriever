@@ -2,7 +2,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { createDb } from "@gr/db";
 import { upsertUser, getOrCreatePersonalKb, listDocuments } from "@gr/db/queries";
 import { LibraryList } from "../../components/library-list.js";
-import { AddContent } from "../../components/add-content.js";
+import { AddContentModal } from "../../components/add-content-modal.js";
 
 export default async function LibraryPage() {
   const { userId } = await auth();
@@ -14,7 +14,7 @@ export default async function LibraryPage() {
   const docs = await listDocuments(db, kbId);
   return (
     <div className="space-y-6">
-      <AddContent kbId={kbId} />
+      <AddContentModal kbId={kbId} />
       <LibraryList docs={docs} />
     </div>
   );
