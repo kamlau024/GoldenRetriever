@@ -7,6 +7,7 @@ import { FileDropzone } from "@/components/ui/file-dropzone";
 import { cn } from "@/lib/utils";
 import { runPool } from "@/lib/pool";
 import { parseBookmarksHtml, MAX_BOOKMARK_IMPORT, type BookmarkEntry } from "@/lib/bookmarks";
+import { REASON_LABEL, type ReasonCode } from "@/lib/import-reason";
 
 const IMPORT_CONCURRENCY = 4;
 type ItemStatus = "pending" | "importing" | "done" | "failed" | "skipped";
@@ -42,6 +43,7 @@ export function BookmarkImport({ kbId }: { kbId: string }) {
   const [phase, setPhase] = useState<"select" | "running" | "finished">("select");
   const [importItems, setImportItems] = useState<ImportItem[]>([]);
   const [statuses, setStatuses] = useState<Record<string, ItemStatus>>({});
+  const [reasons, setReasons] = useState<Record<string, ReasonCode>>({});
   const [completed, setCompleted] = useState(0);
 
   const folders = useMemo(() => {
@@ -90,6 +92,7 @@ export function BookmarkImport({ kbId }: { kbId: string }) {
     setImportItems(items);
     setStatuses(Object.fromEntries(items.map((i) => [i.url, "pending" as ItemStatus])));
     setCompleted(0);
+    setReasons({});
     setPhase("running");
 
     const setStatus = (url: string, s: ItemStatus) => setStatuses((m) => ({ ...m, [url]: s }));
@@ -101,8 +104,13 @@ export function BookmarkImport({ kbId }: { kbId: string }) {
           body: JSON.stringify({ kbId, items: [item] }),
         });
         if (!res.ok) throw new Error();
-        const { queued, skipped } = await res.json() as { queued: number; skipped: number; failed: number };
-        setStatus(item.url, queued > 0 ? "done" : skipped > 0 ? "skipped" : "failed");
+        const body = await res.json() as { results?: { outcome: string; reason?: ReasonCode }[] };
+        const r = body.results?.[0];
+        const status: ItemStatus = r?.outcome === "skipped" ? "skipped" : r?.outcome === "failed" ? "failed" : "done";
+        setStatus(item.url, status);
+        if (r?.reason && (status === "failed" || status === "skipped")) {
+          setReasons((m) => ({ ...m, [item.url]: r.reason! }));
+        }
       } catch {
         setStatus(item.url, "failed");
       } finally {
@@ -116,7 +124,7 @@ export function BookmarkImport({ kbId }: { kbId: string }) {
 
   function reset() {
     setPhase("select"); setEntries(null); setSelected(new Set()); setFile(null);
-    setImportItems([]); setStatuses({}); setCompleted(0); setOpen(new Set());
+    setImportItems([]); setStatuses({}); setCompleted(0); setOpen(new Set()); setReasons({});
   }
 
   const total = importItems.length;
@@ -194,12 +202,21 @@ export function BookmarkImport({ kbId }: { kbId: string }) {
 
           <div className="max-h-72 overflow-y-auto rounded-md border">
             <div className="p-1">
-              {importItems.map((i) => (
-                <div key={i.url} className="flex items-center gap-2 rounded px-2 py-1.5 text-sm">
-                  <StatusIcon status={statuses[i.url] ?? "pending"} />
-                  <span className="min-w-0 flex-1 truncate">{i.title}</span>
-                </div>
-              ))}
+              {importItems.map((i) => {
+                const status = statuses[i.url] ?? "pending";
+                const reason = reasons[i.url];
+                return (
+                  <div key={i.url} className="flex items-start gap-2 rounded px-2 py-1.5 text-sm">
+                    <StatusIcon status={status} />
+                    <div className="min-w-0 flex-1">
+                      <span className="block truncate">{i.title}</span>
+                      {reason && (status === "failed" || status === "skipped") && (
+                        <span className="block text-xs text-muted-foreground">{REASON_LABEL[reason]}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

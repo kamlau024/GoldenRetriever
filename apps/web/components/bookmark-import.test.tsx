@@ -17,7 +17,7 @@ const uploadFile = (html: string) => {
   fireEvent.change(input, { target: { files: [file] } });
 };
 
-beforeEach(() => vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ queued: 1, skipped: 0, failed: 0 }) }) as Response)));
+beforeEach(() => vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ queued: 1, skipped: 0, failed: 0, results: [{ outcome: "done" }] }) }) as Response)));
 afterEach(() => vi.unstubAllGlobals());
 
 describe("BookmarkImport", () => {
@@ -32,18 +32,20 @@ describe("BookmarkImport", () => {
     await waitFor(() => expect(screen.getByText(/Imported 2 pages/)).toBeTruthy());
   });
 
-  it("shows per-bookmark done and failed statuses", async () => {
+  it("shows per-bookmark done/failed status and the failure reason", async () => {
     vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
       const item = JSON.parse(String(init.body)).items[0];
       const failed = item.url.includes("b.example");
-      return { ok: true, json: async () => ({ queued: failed ? 0 : 1, skipped: 0, failed: failed ? 1 : 0 }) } as Response;
+      return { ok: true, json: async () => (failed
+        ? { queued: 0, skipped: 0, failed: 1, results: [{ url: item.url, outcome: "failed", reason: "blocked" }] }
+        : { queued: 1, skipped: 0, failed: 0, results: [{ url: item.url, outcome: "done" }] }) } as Response;
     }));
     render(<BookmarkImport kbId="kb1" />);
     uploadFile(SAMPLE);
     fireEvent.click(await screen.findByRole("button", { name: /Import 2/ }));
     expect(await screen.findByRole("img", { name: "done" })).toBeTruthy();
     expect(await screen.findByRole("img", { name: "failed" })).toBeTruthy();
-    await waitFor(() => expect(screen.getByText(/Imported 1 page/)).toBeTruthy());
+    expect(await screen.findByText("Blocked by the site (403)")).toBeTruthy();
   });
 
   it("disables import when more than the cap is selected", async () => {
