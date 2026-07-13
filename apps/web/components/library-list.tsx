@@ -2,13 +2,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { FileText } from "lucide-react";
+import { FileText, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -24,10 +21,6 @@ export interface LibraryDoc {
   kind: string; captureMode: string; status: string; capturedAt: Date; tags: string[];
 }
 
-const fmt = new Intl.DateTimeFormat("en-US", {
-  month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
-});
-
 function TitleLink({ doc }: { doc: LibraryDoc }) {
   const href = safeHref(doc.sourceUrl);
   const label = doc.title ?? "Untitled";
@@ -36,18 +29,21 @@ function TitleLink({ doc }: { doc: LibraryDoc }) {
     : <a href={href} target="_blank" rel="noopener noreferrer" className="truncate hover:underline">{label}</a>;
 }
 
-function Tags({ tags }: { tags: string[] }) {
+function Tags({ tags, onClick }: { tags: string[]; onClick?: (tag: string) => void }) {
   if (!tags.length) return null;
+  const cls = "rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground";
   return (
     <span className="flex flex-wrap gap-1">
-      {tags.slice(0, 6).map((t) => (
-        <span key={t} className="rounded bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">{t}</span>
+      {tags.slice(0, 6).map((t) => onClick ? (
+        <button key={t} type="button" onClick={() => onClick(t)} className={cn(cls, "hover:bg-amber-100 hover:text-amber-900 dark:hover:bg-amber-950/60 dark:hover:text-amber-100")}>{t}</button>
+      ) : (
+        <span key={t} className={cls}>{t}</span>
       ))}
     </span>
   );
 }
 
-/** Delete confirmation shared by the table and the card list. */
+/** Delete confirmation shared by the cards. */
 function DeleteDoc({ label, disabled, onConfirm }: { label: string; disabled: boolean; onConfirm: () => void }) {
   return (
     <AlertDialog>
@@ -66,41 +62,11 @@ function DeleteDoc({ label, disabled, onConfirm }: { label: string; disabled: bo
   );
 }
 
-export function DocTable({ docs, busy, onDelete }: { docs: LibraryDoc[]; busy: string | null; onDelete: (id: string) => void }) {
+export function DocCards({ docs, busy, onDelete, onTagClick }: {
+  docs: LibraryDoc[]; busy: string | null; onDelete: (id: string) => void; onTagClick?: (tag: string) => void;
+}) {
   return (
-    <Card className="hidden overflow-hidden p-0 sm:block">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Title</TableHead>
-            <TableHead className="w-32">Status</TableHead>
-            <TableHead className="w-24">Source</TableHead>
-            <TableHead className="w-48">Added</TableHead>
-            <TableHead className="w-16 text-right"><span className="sr-only">Actions</span></TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {docs.map((d) => (
-            <TableRow key={d.id}>
-              <TableCell className="font-medium">
-                <span className="flex items-center gap-2"><KindIcon kind={d.kind} /><TitleLink doc={d} /></span>
-                {d.tags.length ? <span className="mt-1 block"><Tags tags={d.tags} /></span> : null}
-              </TableCell>
-              <TableCell><Badge className={cn("border-transparent", statusBadgeClass(d.status))}>{statusLabel(d.status)}</Badge></TableCell>
-              <TableCell><Badge variant="secondary">{sourceLabel(d.captureMode)}</Badge></TableCell>
-              <TableCell className="text-sm text-muted-foreground">{fmt.format(d.capturedAt)}</TableCell>
-              <TableCell className="text-right"><DeleteDoc label={d.title ?? "Untitled"} disabled={busy === d.id} onConfirm={() => onDelete(d.id)} /></TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </Card>
-  );
-}
-
-export function DocCards({ docs, busy, onDelete }: { docs: LibraryDoc[]; busy: string | null; onDelete: (id: string) => void }) {
-  return (
-    <div className="space-y-2 sm:hidden">
+    <div className="space-y-2">
       {docs.map((d) => (
         <Card key={d.id} className="p-3">
           <div className="flex items-start justify-between gap-2">
@@ -112,7 +78,7 @@ export function DocCards({ docs, busy, onDelete }: { docs: LibraryDoc[]; busy: s
             <Badge variant="secondary">{sourceLabel(d.captureMode)}</Badge>
             <span>{relativeTime(d.capturedAt)}</span>
           </div>
-          {d.tags.length ? <div className="mt-2"><Tags tags={d.tags} /></div> : null}
+          {d.tags.length ? <div className="mt-2"><Tags tags={d.tags} onClick={onTagClick} /></div> : null}
         </Card>
       ))}
     </div>
@@ -122,6 +88,7 @@ export function DocCards({ docs, busy, onDelete }: { docs: LibraryDoc[]; busy: s
 export function LibraryList({ docs }: { docs: LibraryDoc[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   async function remove(id: string) {
     setBusy(id);
@@ -130,6 +97,10 @@ export function LibraryList({ docs }: { docs: LibraryDoc[] }) {
       if (res.ok) { toast.success("Deleted"); router.refresh(); } else { toast.error("Couldn't delete"); }
     } finally { setBusy(null); }
   }
+
+  const addTag = (t: string) => setSelected((s) => new Set(s).add(t));
+  const removeTag = (t: string) => setSelected((s) => { const n = new Set(s); n.delete(t); return n; });
+  const clearTags = () => setSelected(new Set());
 
   if (docs.length === 0) {
     return (
@@ -140,10 +111,30 @@ export function LibraryList({ docs }: { docs: LibraryDoc[] }) {
     );
   }
 
+  const selectedArr = [...selected];
+  const visible = selectedArr.length === 0 ? docs : docs.filter((d) => selectedArr.every((t) => d.tags.includes(t)));
+
   return (
-    <>
-      <DocTable docs={docs} busy={busy} onDelete={remove} />
-      <DocCards docs={docs} busy={busy} onDelete={remove} />
-    </>
+    <div className="space-y-3">
+      {selectedArr.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={clearTags}>Clear</Button>
+          {selectedArr.map((t) => (
+            <span key={t} className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs text-amber-900 dark:bg-amber-950/60 dark:text-amber-100">
+              {t}
+              <button type="button" onClick={() => removeTag(t)} aria-label={`Remove ${t}`} className="rounded-full p-0.5 outline-none hover:bg-amber-200/70 focus-visible:ring-2 focus-visible:ring-ring dark:hover:bg-amber-900">
+                <X className="size-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {visible.length === 0 ? (
+        <Card className="p-6 text-center text-sm text-muted-foreground">No documents match the selected tags.</Card>
+      ) : (
+        <DocCards docs={visible} busy={busy} onDelete={remove} onTagClick={addTag} />
+      )}
+    </div>
   );
 }
