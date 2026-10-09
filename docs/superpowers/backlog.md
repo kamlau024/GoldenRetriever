@@ -9,8 +9,11 @@ Living list of outstanding work, so nothing planned-but-skipped gets lost. Updat
 ## Deferred — agreed to do later (user, 2026-06-29)
 
 ### 3. Security cleanups
-- **Remove the `?token=` URL fallback** on `GET /api/capture` (token lands in server access logs).
-  Keep only the `Authorization: Bearer` header path once the iOS Shortcut is confirmed on the header.
+- [x] **Remove the `?token=` URL fallback** on `GET /api/capture` (token lands in server access logs).
+  Done 2026-10-08: `?token=` now returns 401; the header is the only path. Revoke any token used in a URL.
+- **Token scopes** — API tokens are accepted by every `resolveAuth` route (chat, search, delete…),
+  so a leaked phone token has full library access. Add a `scope` (e.g. `capture` | `full`) and
+  limit capture tokens to `/api/capture` + `/api/ingest`.
 - **SSRF DNS-rebind (TOCTOU)** — `assertSafeHttpUrl` resolves+checks the IP, but the subsequent
   `fetch` can resolve to a different IP. Pin the resolved IP for the actual request.
 - **Latent `@vercel/blob` `get`** — `VercelBlobStore.get` imports a `get` that may not exist; only the
