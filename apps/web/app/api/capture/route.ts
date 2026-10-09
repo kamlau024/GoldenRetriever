@@ -4,7 +4,6 @@ import { createDb, schema } from "@gr/db";
 import { insertDocument, getOrCreatePersonalKb } from "@gr/db/queries";
 import type { DocumentKind, IngestInput } from "@gr/core";
 import { resolveAuth } from "../../../lib/clerk-auth.js";
-import { verifyApiToken } from "../../../lib/auth.js";
 import { resolveBlobStore } from "../../../lib/blob.js";
 import { resolveIngestDeps, enqueueIngestion, processJob } from "../../../lib/ingest-service.js";
 
@@ -48,20 +47,27 @@ async function captureString(db: ReturnType<typeof createDb>["db"], userId: stri
 /**
  * GET serves two purposes:
  *  - no `content` param → a no-auth liveness probe (lets a Shortcut confirm reachability).
- *  - `?token=…&content=…` → capture via GET. iOS URLSession can fail to upload a POST body over
- *    HTTP/2 ("network connection was lost"), but plain GETs work — so the Shortcut sends the
- *    token + content in the query string. (Token in the URL is acceptable here: it's a scoped,
- *    revocable capture token for a personal tool.)
+ *  - `?content=…` + `Authorization: Bearer <token>` → capture via GET. iOS URLSession can fail to
+ *    upload a POST body over HTTP/2 ("network connection was lost"), but plain GETs (headers
+ *    included) work — so the Shortcut sends the content in the query string.
+ *
+ * A `?token=` query param is always rejected, even alongside a valid header: API tokens grant
+ * full library access (read, chat, delete), and URLs are written to server logs.
  */
 export async function GET(req: NextRequest) {
   const params = new URL(req.url).searchParams;
+  if (params.has("token")) {
+    return NextResponse.json(
+      { error: "tokens in the URL are not accepted; send an 'Authorization: Bearer <token>' header instead" },
+      { status: 401 },
+    );
+  }
   const content = params.get("content");
   if (!content || !content.trim()) {
     return NextResponse.json({ ok: true, service: "capture" });
   }
   const { db } = createDb();
-  const token = params.get("token");
-  const principal = token ? await verifyApiToken(db, token) : await resolveAuth(db, req);
+  const principal = await resolveAuth(db, req);
   if (!principal) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   return captureString(db, principal.userId, content.trim());
 }

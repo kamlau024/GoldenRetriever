@@ -72,10 +72,10 @@ describe("POST /api/capture (single endpoint, type auto-detected)", () => {
     expect((await res.json()).ok).toBe(true);
   });
 
-  it("GET ?token&content captures via query string (for iOS that can't POST)", async () => {
+  it("GET ?content with a Bearer header captures (for iOS that can't POST)", async () => {
     delete process.env.APP_URL;
-    const url = `http://localhost/api/capture?token=${token}&content=${encodeURIComponent("https://ok.dev/get-cap")}`;
-    const res = await GET(new NextRequest(url));
+    const url = `http://localhost/api/capture?content=${encodeURIComponent("https://ok.dev/get-cap")}`;
+    const res = await GET(new NextRequest(url, { headers: { authorization: `Bearer ${token}` } }));
     expect(res.status).toBe(202);
     const kbId = await getOrCreatePersonalKb(db, "u_cap");
     const doc = (await listDocuments(db, kbId)).find((d) => d.sourceUrl === "https://ok.dev/get-cap");
@@ -83,8 +83,26 @@ describe("POST /api/capture (single endpoint, type auto-detected)", () => {
     expect(doc?.status).toBe("ready");
   });
 
-  it("GET with content but a bad token → 401", async () => {
-    const res = await GET(new NextRequest("http://localhost/api/capture?token=grt_nope&content=hello"));
+  it("GET with content but a bad Bearer token → 401", async () => {
+    const res = await GET(new NextRequest("http://localhost/api/capture?content=hello",
+      { headers: { authorization: "Bearer grt_nope" } }));
+    expect(res.status).toBe(401);
+  });
+
+  it("GET rejects a token in the query string, even a valid one (tokens must not land in URLs/logs)", async () => {
+    delete process.env.APP_URL;
+    const target = `https://ok.dev/query-token-${randomUUID()}`; // unique: the test DB persists across runs
+    const url = `http://localhost/api/capture?token=${token}&content=${encodeURIComponent(target)}`;
+    const res = await GET(new NextRequest(url));
+    expect(res.status).toBe(401);
+    expect((await res.json()).error).toMatch(/Authorization: Bearer/);
+    const kbId = await getOrCreatePersonalKb(db, "u_cap");
+    expect((await listDocuments(db, kbId)).some((d) => d.sourceUrl === target)).toBe(false);
+  });
+
+  it("GET rejects ?token= even when a valid Bearer header is also present", async () => {
+    const url = `http://localhost/api/capture?token=${token}&content=hello`;
+    const res = await GET(new NextRequest(url, { headers: { authorization: `Bearer ${token}` } }));
     expect(res.status).toBe(401);
   });
 
