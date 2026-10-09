@@ -9,10 +9,25 @@
 
 GoldenRetriever is a personal knowledge base with retrieval-augmented chat. You capture articles, PDFs, notes and bookmarks from the web app or your phone's Share Sheet. GoldenRetriever parses, chunks, embeds and auto-tags each item. When you ask a question, a hybrid search finds the most relevant passages and the model streams an answer that cites them. Click a citation to see the passage it came from.
 
-<!-- TODO: add a screenshot or GIF of the chat with citation popovers, e.g.
-![GoldenRetriever chat](docs/images/chat.png) -->
+<p align="center">
+  <img src="docs/images/ask-your-library.png" alt="Asking GoldenRetriever 'Do I have any recipe for cooking potatoes?' and getting a list of six saved recipes with citation links" width="720">
+  <br><em>Ask your library: answers are grounded in what you saved, and each one links to its sources.</em>
+</p>
 
-<!-- TODO: Why I built this — 2–3 sentences in your own words. -->
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/library.png" alt="Library view: saved recipe pages as cards with status, source type and AI-generated tags"></td>
+    <td width="50%"><img src="docs/images/keyword-search.png" alt="Search view: results for 'potato' showing matching passages from saved pages"></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Library: every capture is parsed and auto-tagged</em></td>
+    <td align="center"><em>Search: hybrid keyword + semantic passage search</em></td>
+  </tr>
+</table>
+
+## Why I built this
+
+I built GoldenRetriever to test a product idea. Bookmarking a page worth revisiting is easy; finding it again later is not. GoldenRetriever goes beyond saving links: it turns the content of each bookmark into vectorized text that powers a RAG chat. Instead of scrolling through bookmarks, I can ask a question and quickly find the relevant information I saved, with links back to the sources.
 
 ---
 
