@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      db:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: gr
+          POSTGRES_PASSWORD: gr
+          POSTGRES_DB: gr_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U gr"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+
+    env:
+      DATABASE_URL: postgres://gr:gr@localhost:5433/gr_test
+      # Tests use the mock AiClient; this only satisfies the env schema.
+      AI_GATEWAY_API_KEY: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Apply migrations
+        run: |
+          for f in packages/db/drizzle/*.sql; do
+            echo "applying $(basename "$f")"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Unit + integration tests
+        run: pnpm test:raw
+
+      - name: Web component tests
+        run: pnpm --filter @gr/web exec vitest run

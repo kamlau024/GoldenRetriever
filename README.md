@@ -1,5 +1,8 @@
 # GoldenRetriever 🐕
 
+[![CI](https://github.com/kamlau024/GoldenRetriever/actions/workflows/ci.yml/badge.svg)](https://github.com/kamlau024/GoldenRetriever/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 **Save anything from the web, then ask questions of your own library and get answers grounded in what you saved, with citations.**
 
 **[▶ Live demo](https://goldenretriever-web.vercel.app)**: sign up for a free account to try it.
@@ -184,7 +187,7 @@ Models are plain `provider/model` strings, so you can switch providers without c
 - Chrome extension (MV3) to capture pages that require login, using the rendered DOM
 - Durable background ingestion with Vercel Queues (currently runs in-process with `after()`)
 - Pin resolved IPs for URL fetches to close the DNS-rebinding (TOCTOU) gap
-- GitHub Actions CI and a Playwright end-to-end smoke test
+- Playwright end-to-end smoke test
 - Shared knowledge bases (the schema and Clerk Organizations already allow for them)
 - Android PWA share target; document refresh and RSS subscriptions
 
